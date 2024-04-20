@@ -35,7 +35,7 @@ def render_sidebar() -> Tuple[Dict, Dict]:
     with st.sidebar:
         model_config = load_model_config()
         model_name_select = st.selectbox(
-            'Chat Model',
+            '채팅 모델 💬',
             list(model_config["models"].keys()),
             key=f"{st.session_state['widget_key']}_Model_Id",
         )
@@ -44,7 +44,7 @@ def render_sidebar() -> Tuple[Dict, Dict]:
 
         system_prompt_disabled = model_config.get("system_prompt_disabled", False)
         system_prompt = st.text_area(
-            "System Prompt",
+            "시스템 프롬프트 (역할 지정) 👤",
             value="You're a cool assistant, love to respond with emoji.",
             key=f"{st.session_state['widget_key']}_System_Prompt",
             disabled=system_prompt_disabled

@@ -65,7 +65,7 @@ def render_sidebar() -> Tuple[Dict, Dict, st.runtime.uploaded_file_manager.Uploa
 
         image_upload_disabled = model_info.get("image_upload_disabled", False)
         uploaded_files = st.file_uploader(
-            "Choose a file",
+            "파일을 선택해주세요 📎",
             type=["jpg", "jpeg", "png", "txt", "pdf", "csv", "py"],
             accept_multiple_files=True,
             key=st.session_state["file_uploader_key"],
@@ -106,7 +106,8 @@ def main() -> None:
     # Images already processed
     message_images_list = [
         image_id
-        for message in st.session_state.messages
+        for message in st.session_state.messages            "파일을 선택해주세요 📎",
+
         if message["role"] == "user"
         and "images" in message
         and message["images"]
