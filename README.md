@@ -15,20 +15,33 @@ streamlit run {Chatbot file}.py
 
 ## 예시
 
-1. **Basic Chat**
+### 1. **Basic Chat**
 ```
 streamlit run 1.basic-chat.py
 ```
 ![Basic Chat](./images/1.basic-chat.png)
+- Bedrock 기반 모델 선택
+- 시스템 프롬프트 제공
+- 대화용 메모리 버퍼
 
-2. **Chat with Input**
+
+### 2. **Chat with Input**
 ```
 streamlit run 2.chat-with-input.py
 ```
 ![Chat with Input](./images/2.chat-with-input.png)
+- 1의 기능 포함
+- 파일 입력을 **단기 보관 메모리(Short Term Memory)**로 활용
+    - 지원하는 입력 유형 : 이미지, PDF, CSV, 파이썬 코드 등
 
-3. **Chat RAG FAISS**
+
+### 3-1. **Chat RAG FAISS**
 ```
-streamlit run 3.chat-rag-faiss.py
+streamlit run 3-1.chat-rag-faiss.py
 ```
 ![Chat RAG FAISS](./images/3.chat-rag-faiss.png)
+- 1의 기능 포함
+- 파일 입력을 **장기 보관 메모리(Long Term Memory)**로 활용
+    - 입력된 PDF 파일을 벡터로 변환 (Bedrock 임베딩 모델)
+    - 변환된 벡터를 FAISS의 로컬 데이터베이스에 저장
+    - 사용자 질문을 시맨틱 검색하여, 답변을 위한 컨텍스트로 활용
