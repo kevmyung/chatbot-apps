@@ -1,5 +1,8 @@
 langchain
 streamlit
 langchain_community
+langchain-aws
 boto3
 pdfplumber
+pypdf
+faiss-cpu

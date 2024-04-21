@@ -27,3 +27,8 @@ streamlit run 2.chat-with-input.py
 ```
 ![Chat with Input](./images/2.chat-with-input.png)
 
+3. **Chat RAG FAISS**
+```
+streamlit run 3.chat-rag-faiss.py
+```
+![Chat RAG FAISS](./images/3.chat-rag-faiss.png)

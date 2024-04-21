@@ -2,14 +2,19 @@ from typing import List, Union
 import base64
 from io import BytesIO
 from PIL import Image, UnidentifiedImageError
+from langchain_community.document_loaders import PyPDFLoader
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_community.vectorstores import FAISS
+from .models import ChatModel
+import os
+import tempfile
 import pdfplumber
 import streamlit as st
 
-def process_uploaded_files(
-    uploaded_files: List[st.runtime.uploaded_file_manager.UploadedFile],
-    message_images_list: List[str],
-    uploaded_file_ids: List[str],
-) -> List[Union[dict, str]]:
+FAISS_PATH = './vectorstore/db_faiss'
+INDEX_FILE = 'index.faiss'
+
+def process_uploaded_files(uploaded_files: List[st.runtime.uploaded_file_manager.UploadedFile], message_images_list: List[str], uploaded_file_ids: List[str]) -> List[Union[dict, str]]:
     num_cols = 10
     cols = st.columns(num_cols)
     i = 0
@@ -23,19 +28,15 @@ def process_uploaded_files(
                 img = Image.open(uploaded_file)
                 with BytesIO() as output_buffer:
                     img.save(output_buffer, format=img.format)
-                    content_image = base64.b64encode(output_buffer.getvalue()).decode(
-                        "utf8"
-                    )
-                content_files.append(
-                    {
-                        "type": "image",
-                        "source": {
-                            "type": "base64",
-                            "media_type": "image/jpeg",
-                            "data": content_image,
-                        },
-                    }
-                )
+                    content_image = base64.b64encode(output_buffer.getvalue()).decode("utf8")
+                content_files.append({
+                    "type": "image",
+                    "source": {
+                        "type": "base64",
+                        "media_type": "image/jpeg",
+                        "data": content_image,
+                    },
+                })
                 with cols[i]:
                     st.image(img, caption="", width=75)
                     i += 1
@@ -71,3 +72,42 @@ def process_uploaded_files(
                     pdf_file.close()
 
     return content_files
+
+def faiss_preprocess_document(uploaded_files: List[st.runtime.uploaded_file_manager.UploadedFile], chat_model: ChatModel) -> FAISS:
+    if uploaded_files:
+        docs = []
+        temp_dir = tempfile.TemporaryDirectory()
+        for file in uploaded_files:
+            temp_filepath = os.path.join(temp_dir.name, file.name)
+            with open(temp_filepath, "wb") as f:
+                f.write(file.getvalue())
+            loader = PyPDFLoader(temp_filepath)
+            docs.extend(loader.load())
+
+        # chunking
+        text_splitter = RecursiveCharacterTextSplitter(chunk_size=1500, chunk_overlap=200)
+        splits = text_splitter.split_documents(docs)
+
+        # embed & store
+        vectordb = FAISS.from_documents(documents=splits, embedding=chat_model.emb)
+        vectordb.save_local(FAISS_PATH)
+        st.session_state['vector_empty'] = False
+
+        retriever = vectordb.as_retriever(search_type="mmr", search_kwargs={"k": 2, "fetch_k": 4})
+    else:
+        if os.path.exists(f"{FAISS_PATH}/{INDEX_FILE}"):
+            vectordb = FAISS.load_local(folder_path=FAISS_PATH, embeddings=chat_model.emb, allow_dangerous_deserialization=True)
+            retriever = vectordb.as_retriever(search_type="mmr", search_kwargs={"k": 2, "fetch_k": 4})
+            st.session_state['vector_empty'] = False
+        else:
+            retriever = None
+    return retriever
+
+def reset_faiss_index() -> None:
+    import shutil
+    shutil.rmtree(FAISS_PATH, ignore_errors=True)
+    st.session_state['vector_empty'] = True
+    st.success("인덱스를 초기화했습니다.")
+
+def faiss_reset_on_click() -> None:
+    reset_faiss_index()

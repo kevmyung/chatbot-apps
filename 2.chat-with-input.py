@@ -32,7 +32,7 @@ def generate_response(conversation: ConversationChain, input: Union[str, List[di
         {"input": input}, {"callbacks": [StreamHandler(st.empty())]}
     )
 
-def render_sidebar() -> Tuple[Dict, Dict, st.runtime.uploaded_file_manager.UploadedFile]:
+def render_sidebar() -> Tuple[Dict, Dict, List[st.runtime.uploaded_file_manager.UploadedFile]]:
     with st.sidebar:
         model_config = load_model_config()
         model_name_select = st.selectbox(
@@ -42,7 +42,7 @@ def render_sidebar() -> Tuple[Dict, Dict, st.runtime.uploaded_file_manager.Uploa
         )
         st.session_state["model_name"] = model_name_select
         model_info = model_config["models"][model_name_select]
-
+        model_info["region_name"] = region_name
         system_prompt_disabled = model_config.get("system_prompt_disabled", False)
         system_prompt = st.text_area(
             "시스템 프롬프트 (역할 지정) 👤",
@@ -106,8 +106,7 @@ def main() -> None:
     # Images already processed
     message_images_list = [
         image_id
-        for message in st.session_state.messages            "파일을 선택해주세요 📎",
-
+        for message in st.session_state.messages
         if message["role"] == "user"
         and "images" in message
         and message["images"]
