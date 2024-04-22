@@ -39,9 +39,23 @@ streamlit run 2.chat-with-input.py
 ```
 streamlit run 3-1.chat-rag-faiss.py
 ```
-![Chat RAG FAISS](./images/3.chat-rag-faiss.png)
+![Chat RAG FAISS](./images/3-1.chat-rag-faiss.png)
 - 1의 기능 포함
 - 파일 입력을 "장기 보관 메모리(Long Term Memory)"로 활용
     - 입력된 PDF 파일을 벡터로 변환 (Bedrock 임베딩 모델)
     - 변환된 벡터를 FAISS의 로컬 데이터베이스에 저장
     - 사용자 질문을 시맨틱 검색하여, 답변을 위한 컨텍스트로 활용
+ 
+### 3-2. **Chat RAG OpenSearch Hybrid Retriever**
+1. CloudFormation 파일을 활용하여 OpenSearch 클러스터 생성 (기존 클러스터 사용 가능)
+2. `libs/opensearch.yml` 파일의 연결 정보 업데이트
+3. 챗봇 애플리케이션 실행
+```
+streamlit run 3-1.chat-rag-faiss.py
+```
+![Chat with Input](./images/3-2.chat-rag-opensearch.png)
+- 1의 기능 포함
+- 파일 입력을 "장기 보관 메모리(Long Term Memory)"로 활용
+    - 입력된 PDF 파일을 벡터로 변환 (Bedrock 임베딩 모델)
+    - 변환된 벡터를 Amazon OpenSearch Service 클러스터에 저장 
+    - 사용자 질문을 시맨틱 & 텍스트 검색하고 조합하여, 답변을 위한 컨텍스트로 활용

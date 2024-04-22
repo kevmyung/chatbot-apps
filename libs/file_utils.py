@@ -6,6 +6,7 @@ from langchain_community.document_loaders import PyPDFLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores import FAISS
 from .models import ChatModel
+from .opensearch import OpenSearchClient
 import os
 import tempfile
 import pdfplumber
@@ -94,6 +95,8 @@ def faiss_preprocess_document(uploaded_files: List[st.runtime.uploaded_file_mana
         st.session_state['vector_empty'] = False
 
         retriever = vectordb.as_retriever(search_type="mmr", search_kwargs={"k": 2, "fetch_k": 4})
+        with st.sidebar:
+            st.write("지식기반 업데이트가 완료됐어요. X를 눌해 파일을 닫아주세요. 업로드 된 파일에 대해 질문하거나, 추가로 업로드해도 좋습니다.")
     else:
         if os.path.exists(f"{FAISS_PATH}/{INDEX_FILE}"):
             vectordb = FAISS.load_local(folder_path=FAISS_PATH, embeddings=chat_model.emb, allow_dangerous_deserialization=True)
@@ -103,11 +106,50 @@ def faiss_preprocess_document(uploaded_files: List[st.runtime.uploaded_file_mana
             retriever = None
     return retriever
 
+
+def opensearch_preprocess_document(uploaded_file: st.runtime.uploaded_file_manager.UploadedFile, chat_model: ChatModel, os_client: OpenSearchClient):
+
+    if uploaded_file:
+        if not os_client.is_index_present():
+            os_client.create_index()
+        
+        docs = []
+        temp_dir = tempfile.TemporaryDirectory()
+        temp_filepath = os.path.join(temp_dir.name, uploaded_file.name)
+        with open(temp_filepath, "wb") as f:
+            f.write(uploaded_file.getvalue())
+        loader = PyPDFLoader(temp_filepath)
+        docs.extend(loader.load())
+
+        # chunking
+        text_splitter = RecursiveCharacterTextSplitter(chunk_size=1500, chunk_overlap=200)
+        splits = text_splitter.split_documents(docs)
+
+        # embed & store
+        os_client.vector_store.add_documents(documents=splits)
+        st.session_state['vector_empty'] = False
+        
+        with st.sidebar:
+            st.write("지식기반 업데이트가 완료됐어요. X를 눌해 파일을 닫아주세요. 업로드 된 파일에 대해 질문하거나, 추가로 업로드해도 좋습니다.")
+    else:
+        if os_client.is_index_present(): 
+            st.session_state['vector_empty'] = False
+
+
+def opensearch_reset_on_click() -> None:
+    if "os_client" in st.session_state:
+        os_client = st.session_state['os_client']
+        if os_client.is_index_present():
+            os_client.delete_index()
+    st.session_state['vector_empty'] = True
+    st.success("지식기반이 초기화 됐습니다.")
+
+
 def reset_faiss_index() -> None:
     import shutil
     shutil.rmtree(FAISS_PATH, ignore_errors=True)
     st.session_state['vector_empty'] = True
-    st.success("인덱스를 초기화했습니다.")
+    st.success("지식기반이 초기화 됐습니다.")
 
 def faiss_reset_on_click() -> None:
     reset_faiss_index()
