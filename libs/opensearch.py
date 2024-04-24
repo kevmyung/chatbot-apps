@@ -124,9 +124,8 @@ class retriever_utils():
             return similar_docs_semantic, similar_docs_lexical
 
         similar_docs_semantic, similar_docs_lexical = search_sync()
-        print("semantic_docs:", similar_docs_semantic)
-        print("lexical_docs:", similar_docs_lexical)
-        print(kwargs.get("ensemble_weights", [.51, .49]))
+        # print("semantic_docs:", similar_docs_semantic)
+        # print("lexical_docs:", similar_docs_lexical)
 
         similar_docs = cls.get_ensemble_results(
             doc_lists=[similar_docs_semantic, similar_docs_lexical],
