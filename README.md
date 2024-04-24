@@ -23,14 +23,14 @@ streamlit run 1.basic-chat.py
 - Bedrock 기반 모델 선택
 - 시스템 프롬프트 제공
 - 대화용 메모리 버퍼
-
+- Base 코드 활용 : [Bedrock-ChatBot-with-LangChain-and-Streamlit](https://github.com/davidshtian/Bedrock-ChatBot-with-LangChain-and-Streamlit)
 
 ### 2. **Chat with Input**
 ```
 streamlit run 2.chat-with-input.py
 ```
 ![Chat with Input](./images/2.chat-with-input.png)
-- 1의 기능 포함
+- 기본 챗봇 기능 (`1. Basic Chat`)
 - 파일 입력을 "단기 보관 메모리(Short Term Memory)"로 활용
     - 지원하는 입력 유형 : 이미지, PDF, CSV, 파이썬 코드 등
 
@@ -40,7 +40,7 @@ streamlit run 2.chat-with-input.py
 streamlit run 3-1.chat-rag-faiss.py
 ```
 ![Chat RAG FAISS](./images/3-1.chat-rag-faiss.png)
-- 1의 기능 포함
+- 기본 챗봇 기능 (`1. Basic Chat`)
 - 파일 입력을 "장기 보관 메모리(Long Term Memory)"로 활용
     - 입력된 PDF 파일을 벡터로 변환 (Bedrock 임베딩 모델)
     - 변환된 벡터를 FAISS의 로컬 데이터베이스에 저장
@@ -55,8 +55,9 @@ streamlit run 3-1.chat-rag-faiss.py
 streamlit run 3-1.chat-rag-faiss.py
 ```
 ![Chat with Input](./images/3-2.chat-rag-opensearch.png)
-- 1의 기능 포함
+- 기본 챗봇 기능 (`1. Basic Chat`)
 - 파일 입력을 "장기 보관 메모리(Long Term Memory)"로 활용
     - 입력된 PDF 파일을 벡터로 변환 (Bedrock 임베딩 모델)
     - 변환된 벡터를 Amazon OpenSearch Service 클러스터에 저장 
     - 사용자 질문을 시맨틱 & 텍스트으로 검색하고, 검색 결과를 조합(앙상블)하여 답변을 위한 컨텍스트로 활용
+- OpenSearch Hybrid Search 코드 활용 : [aws-ai-ml-workshop-kr](https://github.com/aws-samples/aws-ai-ml-workshop-kr/blob/master/genai/aws-gen-ai-kr/utils/rag.py)
