@@ -90,7 +90,8 @@ def faiss_preprocess_document(uploaded_files: List[st.runtime.uploaded_file_mana
         splits = text_splitter.split_documents(docs)
 
         # embed & store
-        vectordb = FAISS.from_documents(documents=splits, embedding=chat_model.emb)
+        vectordb = FAISS.load_local(folder_path=FAISS_PATH, embeddings=chat_model.emb, allow_dangerous_deserialization=True)
+        vectordb.add_documents(documents=splits, embeddings=chat_model.emb)
         vectordb.save_local(FAISS_PATH)
         st.session_state['vector_empty'] = False
 
