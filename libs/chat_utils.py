@@ -80,3 +80,4 @@ def langchain_messages_format(messages: List[Union["AIMessage", "HumanMessage"]]
                     message = HumanMessage(message.content[0]["content"])
                 messages[i] = message
     return messages
+
