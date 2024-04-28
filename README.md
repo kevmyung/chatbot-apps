@@ -61,3 +61,14 @@ streamlit run 3-1.chat-rag-faiss.py
     - 변환된 벡터를 Amazon OpenSearch Service 클러스터에 저장 
     - 사용자 질문을 시맨틱 & 텍스트으로 검색하고, 검색 결과를 조합(앙상블)하여 답변을 위한 컨텍스트로 활용
 - OpenSearch Hybrid Search 코드 활용 : [aws-ai-ml-workshop-kr](https://github.com/aws-samples/aws-ai-ml-workshop-kr/blob/master/genai/aws-gen-ai-kr/utils/rag.py)
+
+### 4. **Chat SQL Agent**
+![Chat SQL Agent](./images/4.chat-sql-agent.png)
+- 사용자의 자연어 질문을 SQL 쿼리로 변환 및 실행
+- 샘플 데이터베이스([Chinook DB](https://github.com/lerocha/chinook-database))를 활용하거나, 데이터베이스 URI 입력
+- Langchain 라이브러리를 활용해 쿼리 변환 및 DB 조회 
+    - Simple SQL Chain : `SQLDatabaseChain`
+    - SQLChain : `create_sql_query_chain`
+    - SQL Agent : `XML Agent` + `SQLDatabaseToolkit`
+    - Agent : `XML Agent` + `SQLDatabseChain`
+- **응답 지연시간 및 토큰 최적화 작업 필요**
