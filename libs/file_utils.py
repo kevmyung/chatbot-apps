@@ -90,10 +90,14 @@ def faiss_preprocess_document(uploaded_files: List[st.runtime.uploaded_file_mana
         splits = text_splitter.split_documents(docs)
 
         # embed & store
-        vectordb = FAISS.load_local(folder_path=FAISS_PATH, embeddings=chat_model.emb, allow_dangerous_deserialization=True)
-        vectordb.add_documents(documents=splits, embeddings=chat_model.emb)
-        vectordb.save_local(FAISS_PATH)
-        st.session_state['vector_empty'] = False
+        if st.session_state['vector_empty'] == False:
+            vectordb = FAISS.load_local(folder_path=FAISS_PATH, embeddings=chat_model.emb, allow_dangerous_deserialization=True)
+            vectordb.add_documents(documents=splits, embeddings=chat_model.emb)
+            vectordb.save_local(FAISS_PATH)
+        else:
+            vectordb = FAISS.from_documents(documents=splits, embedding=chat_model.emb)
+            vectordb.save_local(FAISS_PATH)
+            st.session_state['vector_empty'] = False
 
         retriever = vectordb.as_retriever(search_type="mmr", search_kwargs={"k": 2, "fetch_k": 4})
         with st.sidebar:
