@@ -9,7 +9,7 @@ class ChatModel:
         self.model_kwargs = model_kwargs
         self.llm = ChatBedrock(model_id=self.model_id, region_name=self.model_info['region_name'], model_kwargs=model_kwargs, streaming=True)
         self.emb = BedrockEmbeddings(model_id="amazon.titan-embed-g1-text-02", region_name=self.model_info['region_name'])
-        
+    
     def format_prompt(self, prompt: str) -> Union[str, List[Dict]]:
         model_info = self.model_info
         if model_info.get("input_format") == "text":
