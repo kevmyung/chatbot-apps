@@ -35,12 +35,12 @@ streamlit run 2.chat-with-input.py
     - 지원하는 입력 유형 : 이미지, PDF, CSV, 파이썬 코드 등
 
 
-### 3-1. **Chat RAG FAISS**
+### 3-1. **Chat RAG FAISS with Image Context**
 ```
 streamlit run 3-1.chat-rag-faiss.py
 ```
 ![Chat RAG FAISS](./images/3-1.chat-rag-faiss.png)
-- 기본 챗봇 기능 (`2. Basic Chat`)
+- 기본 챗봇 기능 (`1. Basic Chat`)
 - 파일 입력을 "장기 보관 메모리(Long Term Memory)"로 활용
     - 입력된 PDF 파일을 벡터로 변환 (Bedrock 임베딩 모델)
     - 변환된 벡터를 FAISS의 로컬 데이터베이스에 저장
@@ -48,7 +48,7 @@ streamlit run 3-1.chat-rag-faiss.py
 - PDF 페이지를 이미지로 저장한 후, 검색 결과의 컨텍스트로 제공
     - 추가 라이브러리 `sudo apt-get install poppler-utils`
  
-### 3-2. **Chat RAG OpenSearch Hybrid Retriever**
+### 3-2. **Chat RAG OpenSearch with Hybrid Retriever**
 1. CloudFormation 파일(`cloudformation/setup_opensearch.yaml`)로 OpenSearch 클러스터 생성
     - 기존에 생성된 클러스터를 재사용 가능
 3. `libs/opensearch.yml` 파일의 연결 정보 업데이트
