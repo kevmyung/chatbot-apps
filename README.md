@@ -7,6 +7,7 @@
 ```
 pip install -r requirements.txt
 ```
+*여러 라이브러리가 설치되기 때문에, 사용 환경에 따라 의존성 오류가 발생할 수 있습니다. 설치 전에, 기존 환경과의 버전 호환성을 체크해주세요.
 
 2. 원하는 챗봇 애플리케이션 실행:
 ```
@@ -66,11 +67,8 @@ streamlit run 3-1.chat-rag-faiss.py
 
 ### 4. **Chat SQL Agent**
 ![Chat SQL Agent](./images/4.chat-sql-agent.png)
-- 사용자의 자연어 질문을 SQL 쿼리로 변환 및 실행
+- 사용자의 자연어 질문을 Agent 기반으로 SQL 쿼리 변환/실행
 - 샘플 데이터베이스([Chinook DB](https://github.com/lerocha/chinook-database))를 활용하거나, 데이터베이스 URI 입력
 - Langchain 라이브러리를 활용해 쿼리 변환 및 DB 조회 
-    - Simple SQL Chain : `SQLDatabaseChain`
-    - SQLChain : `create_sql_query_chain`
-    - SQL Agent : `XML Agent` + `SQLDatabaseToolkit`
-    - Agent : `XML Agent` + `SQLDatabseChain`
-- **응답 지연시간 및 토큰 최적화 작업 필요**
+- **자동 시각화 기능 추가 구현 필요**
+- **추가 커스텀 로직 구현 필요 (스키마 Description 조회 등)**
