@@ -1,3 +1,4 @@
+import os
 import streamlit as st
 import random
 from typing import Dict, Tuple, List, Union
@@ -5,10 +6,11 @@ from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain.chains import ConversationChain
 from langchain.memory import ConversationBufferWindowMemory
 from langchain_community.chat_message_histories import StreamlitChatMessageHistory
+from langchain_community.callbacks.streamlit import StreamlitCallbackHandler
 
 from libs.config import load_model_config
 from libs.models import ChatModel
-from libs.chat_utils import StreamHandler, display_chat_messages, langchain_messages_format
+from libs.chat_utils import StreamHandler, display_chat_messages, display_pdf_images, langchain_messages_format, PrintRetrievalHandler
 from libs.file_utils import faiss_preprocess_document, faiss_reset_on_click
 
 region_name = 'us-east-1'
@@ -24,6 +26,8 @@ CLAUDE_PROMPT = ChatPromptTemplate.from_messages([
     MessagesPlaceholder(variable_name="history"),
     MessagesPlaceholder(variable_name="input"),
 ])
+
+st.session_state['show_image'] = True
 
 def generate_response(conversation: ConversationChain, input: Union[str, List[dict]]) -> str:
     return conversation.invoke({"input": input}, {"callbacks": [StreamHandler(st.empty())]})
@@ -92,21 +96,26 @@ def main() -> None:
         st.session_state["vector_empty"] = True
 
     display_chat_messages(uploaded_files)
+
     prompt = st.chat_input()
 
     retriever = faiss_preprocess_document(uploaded_files, chat_model)
 
     if prompt:
         context_text = ""
+        with st.chat_message("user"):
+            st.markdown(prompt)
+        
         if retriever is not None:
-            context_text = retriever.get_relevant_documents(prompt)
+            st.session_state['image_paths'] = []
+            retrieval_handler = PrintRetrievalHandler(st.container())
+            context_text = retriever.get_relevant_documents(prompt, callbacks=[retrieval_handler])
+
         prompt_new = f"Here's some context for you. However, do not mention this context unless it is directly relevant to the user's question. It is essential to deliver an answer that precisely addresses the user's needs \n<context>\n{context_text}</context>\n\n{prompt}\n\n"
 
         formatted_prompt = chat_model.format_prompt(prompt_new)
         st.session_state.messages.append({"role": "user", "content": formatted_prompt})
-        with st.chat_message("user"):
-            st.markdown(prompt)
-
+        
         st.session_state["langchain_messages"] = langchain_messages_format(
             st.session_state["langchain_messages"]
         )
@@ -118,6 +127,9 @@ def main() -> None:
                 )
             message = {"role": "assistant", "content": response}
             st.session_state.messages.append(message)
+            if 'image_paths' in st.session_state:
+                for img in st.session_state['image_paths']:
+                    display_pdf_images(img)
 
 if __name__ == "__main__":
     main()

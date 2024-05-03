@@ -10,9 +10,12 @@ from .opensearch import OpenSearchClient
 import os
 import tempfile
 import pdfplumber
+from pdf2image import convert_from_path
+from PIL import Image
 import streamlit as st
 
 FAISS_PATH = './vectorstore/db_faiss'
+FAISS_ORIGIN = './vectorstore/pdf' 
 INDEX_FILE = 'index.faiss'
 
 def process_uploaded_files(uploaded_files: List[st.runtime.uploaded_file_manager.UploadedFile], message_images_list: List[str], uploaded_file_ids: List[str]) -> List[Union[dict, str]]:
@@ -74,16 +77,35 @@ def process_uploaded_files(uploaded_files: List[st.runtime.uploaded_file_manager
 
     return content_files
 
+
+def pdf_to_images(pdf_filepath):
+    output_folder = os.path.splitext(pdf_filepath)[0] + "_images"
+    if not os.path.exists(output_folder):
+        os.makedirs(output_folder)
+    
+    try:
+        images = convert_from_path(pdf_filepath)
+        for i, image in enumerate(images):
+            image_filename = os.path.join(output_folder, f"page_{i}.png")
+            print(f"Image saved in {image_filename}.")
+            image.save(image_filename, "PNG")
+    except Exception as e:
+        print(f"Failed to convert PDF to images: {e}")
+
+
 def faiss_preprocess_document(uploaded_files: List[st.runtime.uploaded_file_manager.UploadedFile], chat_model: ChatModel) -> FAISS:
     if uploaded_files:
         docs = []
-        temp_dir = tempfile.TemporaryDirectory()
+        if not os.path.exists(FAISS_ORIGIN):
+            os.makedirs(FAISS_ORIGIN)
         for file in uploaded_files:
-            temp_filepath = os.path.join(temp_dir.name, file.name)
-            with open(temp_filepath, "wb") as f:
+            pdf_path = os.path.join(FAISS_ORIGIN, file.name)
+            with open(pdf_path, "wb") as f:
                 f.write(file.getvalue())
-            loader = PyPDFLoader(temp_filepath)
+            loader = PyPDFLoader(pdf_path)
             docs.extend(loader.load())
+
+            pdf_to_images(pdf_path)
 
         # chunking
         text_splitter = RecursiveCharacterTextSplitter(chunk_size=1500, chunk_overlap=200)
@@ -113,7 +135,6 @@ def faiss_preprocess_document(uploaded_files: List[st.runtime.uploaded_file_mana
 
 
 def opensearch_preprocess_document(uploaded_file: st.runtime.uploaded_file_manager.UploadedFile, chat_model: ChatModel, os_client: OpenSearchClient):
-
     if uploaded_file:
         if not os_client.is_index_present():
             os_client.create_index()
@@ -153,6 +174,7 @@ def opensearch_reset_on_click() -> None:
 def reset_faiss_index() -> None:
     import shutil
     shutil.rmtree(FAISS_PATH, ignore_errors=True)
+    shutil.rmtree(FAISS_ORIGIN, ignore_errors=True)
     st.session_state['vector_empty'] = True
     st.success("지식기반이 초기화 됐습니다.")
 

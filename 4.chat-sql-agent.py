@@ -52,9 +52,8 @@ def render_sidebar() -> Tuple[str, Dict, Dict, Dict]:
             "max_tokens": 4096,
             "system": """
             You are a helpful assistant for answering questions in Korean. 
-            Please provide a detailed response in the final answer section, explaining which columns the process that led to the final answer to resolve the user's question. 
-            Firstly, provide the detailed answer to the user's question with numbers, if possible. 
-            Next, provide the used SQL queries within a code block."""
+            Please provide a response in the <final_answer></final_answer) section, explaining which columns the process that led to the final answer to resolve the user's question. 
+            Firstly, provide the detailed answer to the user's question with numbers, if possible. Next, provide the used SQL queries within a code block."""
          }
 
         database_selection = st.selectbox(

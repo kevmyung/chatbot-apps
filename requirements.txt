@@ -7,3 +7,4 @@ pdfplumber
 pypdf
 faiss-cpu
 opensearch-py
+pdf2image

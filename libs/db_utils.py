@@ -56,7 +56,7 @@ class DatabaseClient:
             # To be implemented
 
         @tool(return_direct=True)
-        def draw_line_chart(data: List):
+        def draw_line_chart(data):
             """
             Use this tool when user asks you to draw line chart. 
             """   

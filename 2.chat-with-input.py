@@ -94,9 +94,6 @@ def main() -> None:
     if "messages" not in st.session_state:
         st.session_state.messages = [INIT_MESSAGE]
 
-    if "message_file_list" not in st.session_state:
-        st.session_state.message_file_list = []
-
     # Display message history
     display_chat_messages(uploaded_files)
 
