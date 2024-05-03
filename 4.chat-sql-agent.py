@@ -58,7 +58,7 @@ def render_sidebar() -> Tuple[str, Dict, Dict, Dict]:
 
         database_selection = st.selectbox(
             '데이터베이스',
-            ('SQLite-샘플', 'MySQL', 'PostgreSQL', 'SQLite', 'Presto', 'Oracle')
+            ('SQLite-샘플', 'MySQL', 'PostgreSQL', 'Redshift', 'SQLite', 'Presto', 'Oracle')
         )
 
         if database_selection != "SQLite-샘플":

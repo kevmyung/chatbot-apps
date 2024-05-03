@@ -8,3 +8,5 @@ pypdf
 faiss-cpu
 opensearch-py
 pdf2image
+psycopg2-binary
+sqlalchemy-redshift 
