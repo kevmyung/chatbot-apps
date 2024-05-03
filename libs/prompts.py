@@ -10,7 +10,8 @@ You have access to the following tools:
 
 In order to use a tool, you can use <tool></tool> and <tool_input></tool_input> tags. \
 You will then get back a response in the form <observation></observation>
-For example, if you have a tool called 'search' that could run a google search, in order to search for the weather in SF you would respond:
+DO NOT make any DML statements (INSERT, UPDATE, DELETE, DROP etc.) to the database.
+For example, if you have a tool called 'sql_db_schema' that could load the table schema, in order to load the PlayListTrack table schema you would respond:
 
 <tool>sql_db_schema</tool><tool_input>PlayListTrack</tool_input>
 <observation>
