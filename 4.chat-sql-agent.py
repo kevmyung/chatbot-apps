@@ -12,6 +12,10 @@ from libs.config import load_model_config
 from libs.models import ChatModel
 from libs.chat_utils import StreamHandler, display_chat_messages
 
+os.environ["LANGCHAIN_TRACING_V2"] = "true"
+os.environ["LANGCHAIN_ENDPOINT"] = "https://api.smith.langchain.com"
+os.environ["LANGCHAIN_PROJECT"] = "text-to-sql-test"
+os.environ["LANGCHAIN_API_KEY"] = "ls__ec71076b13794c789ad33fb1c88f1556"
 
 st.session_state.region_name = 'us-east-1'
 st.set_page_config(page_title='친절한 Bedrock 챗봇', page_icon="🤖", layout="wide")
@@ -29,12 +33,21 @@ CLAUDE_PROMPT = ChatPromptTemplate.from_messages(
     ]
 )
 
+
+def new_chat() -> None:
+    """
+    Reset the chat session and initialize a new conversation chain.
+    """
+    st.session_state["messages"] = [INIT_MESSAGE]
+    st.session_state["langchain_messages"] = []
+
 def generate_response(conversation: ConversationChain, input: Union[str, List[dict]]) -> str:
     return conversation.invoke(
         {"input": input}, {"callbacks": [StreamHandler(st.empty())]}
     )
 
 def render_sidebar() -> Tuple[str, Dict, Dict, Dict]:
+    st.sidebar.button("채팅 초기화", on_click=new_chat, type="primary")
     with st.sidebar:
         model_config = load_model_config()
         model_name_select = st.selectbox(
@@ -52,8 +65,9 @@ def render_sidebar() -> Tuple[str, Dict, Dict, Dict]:
             "max_tokens": 4096,
             "system": """
             You are a helpful assistant for answering questions in Korean. 
-            Please provide a response in the <final_answer></final_answer) section, explaining which columns the process that led to the final answer to resolve the user's question. 
-            Firstly, provide the detailed answer to the user's question with numbers, if possible. Next, provide the used SQL queries within a code block."""
+            Please provide a response in the <final_answer></final_answer) section.
+            Firstly, exaplain the process that led to the final answer. 
+            If you used the SQL tools for resolving the user's question, provide the detailed answer to the user's question with numbers and the used SQL queries within a Markdown code block."""
          }
 
         database_selection = st.selectbox(
@@ -64,6 +78,9 @@ def render_sidebar() -> Tuple[str, Dict, Dict, Dict]:
         if database_selection != "SQLite-샘플":
             database_dialect = database_selection
             database_uri = st.text_input("Database URI", value="", placeholder="dbtype://user:pass@hostname:port/dbname")
+            if not database_uri:
+                st.info("데이터베이스 URI를 입력해주세요")
+                st.stop()
         else:
             database_dialect = "SQLite"
             database_uri = "sqlite:///Chinook.db"
@@ -85,11 +102,7 @@ def main() -> None:
     if "messages" not in st.session_state:
         st.session_state.messages = [INIT_MESSAGE] 
 
-    if not 'db_client' in st.session_state:
-        db_client = DatabaseClient(chat_model.llm, chat_model.emb, database_config)
-        st.session_state['db_client'] = db_client
-    else:
-        db_client = st.session_state['db_client']
+    db_client = DatabaseClient(chat_model.llm, chat_model.emb, database_config)
 
     display_chat_messages([])  
 
@@ -101,7 +114,7 @@ def main() -> None:
         
         with st.chat_message("assistant"):
             callback = StreamlitCallbackHandler(st.container())
-            response = db_client.agent_executor({"question":prompt, "chat_history": st.session_state.messages}, callbacks=[callback])
+            response = db_client.agent_executor({"question":prompt, "dialect":db_client.dialect, "chat_history": st.session_state.messages}, callbacks=[callback])
             st.session_state.messages.append({"role": "assistant", "content": response['output']})
             st.write(response['output'])
 
