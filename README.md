@@ -70,5 +70,5 @@ streamlit run 3-1.chat-rag-faiss.py
 - 사용자의 자연어 질문을 Agent 기반으로 SQL 쿼리 변환/실행
 - 샘플 데이터베이스([Chinook DB](https://github.com/lerocha/chinook-database))를 활용하거나, 데이터베이스 URI 입력
 - Langchain 라이브러리를 활용해 쿼리 변환 및 DB 조회 
+- DB 스키마(테이블/컬럼)에 대한 상세 Description을 참고하기 위한 custom agent 로직 추가
 - **자동 시각화 기능 추가 구현 필요**
-- **추가 커스텀 로직 구현 필요 (스키마 Description 조회 등)**
