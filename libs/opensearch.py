@@ -5,10 +5,8 @@ from typing import List, Optional, Dict
 import streamlit as st
 from opensearchpy import OpenSearch, RequestsHttpConnection
 from langchain.schema import BaseRetriever, Document
-from langchain.callbacks.manager import CallbackManagerForRetrieverRun
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores import OpenSearchVectorSearch
-from langchain.retrievers.self_query.base import SelfQueryRetriever
 
 
 class OpenSearchClient:
