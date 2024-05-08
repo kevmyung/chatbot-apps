@@ -12,11 +12,6 @@ from libs.config import load_model_config
 from libs.models import ChatModel
 from libs.chat_utils import StreamHandler, display_chat_messages
 
-os.environ["LANGCHAIN_TRACING_V2"] = "true"
-os.environ["LANGCHAIN_ENDPOINT"] = "https://api.smith.langchain.com"
-os.environ["LANGCHAIN_PROJECT"] = "text-to-sql-test"
-os.environ["LANGCHAIN_API_KEY"] = "ls__ec71076b13794c789ad33fb1c88f1556"
-
 st.session_state.region_name = 'us-east-1'
 st.set_page_config(page_title='친절한 Bedrock 챗봇', page_icon="🤖", layout="wide")
 st.title("🤖 친절한 Bedrock 챗봇")
