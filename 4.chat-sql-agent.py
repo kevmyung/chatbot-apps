@@ -4,8 +4,6 @@ import os
 from typing import Dict, Tuple, List, Union
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain.chains import ConversationChain
-from langchain.memory import ConversationBufferWindowMemory
-from langchain_community.chat_message_histories import StreamlitChatMessageHistory
 from langchain_community.callbacks.streamlit import StreamlitCallbackHandler
 from libs.db_utils import DatabaseClient
 from libs.config import load_model_config
@@ -87,13 +85,18 @@ def render_sidebar() -> Tuple[str, Dict, Dict, Dict]:
 
                 if not os.path.exists(schema_file):
                     st.error("스키마 파일 이름을 확인해주세요!")
+
             else:
                 schema_file = ""
+
+        with st.sidebar:
+            allow_query_exec = st.checkbox("생성된 쿼리 실행 허용", value=True)
 
         database_config = {
             "dialect": database_dialect,
             "uri": database_uri,
-            "schema_file": schema_file
+            "schema_file": schema_file,
+            "allow_query_exec": allow_query_exec
         }
 
     return model_name_select, model_info, model_kwargs, database_config
@@ -120,7 +123,7 @@ def main() -> None:
         
         with st.chat_message("assistant"):
             callback = StreamlitCallbackHandler(st.container())
-            response = db_client.agent_executor({"question":prompt, "dialect":db_client.dialect, "chat_history": st.session_state.messages}, callbacks=[callback])
+            response = db_client.agent_executor.invoke({"question":prompt, "dialect":db_client.dialect, "chat_history": st.session_state.messages}, config={"callbacks": [callback]})
             st.session_state.messages.append({"role": "assistant", "content": response['output']})
             st.write(response['output'])
 

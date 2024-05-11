@@ -17,7 +17,10 @@ from langchain_core.pydantic_v1 import Field, BaseModel
 from langchain_core.tools import BaseToolkit
 from typing import Any, List, Optional
 import json
-import os
+import warnings
+from sqlalchemy.exc import SAWarning
+
+warnings.filterwarnings("ignore", r".*support Decimal objects natively, and SQLAlchemy", SAWarning)
 
 class DatabaseClient:
     def __init__(self, llm, emb, config):
@@ -25,10 +28,14 @@ class DatabaseClient:
         self.emb = emb
         self.dialect = config['dialect']
         self.schema_file = config['schema_file']
+        self.allow_query_exec = config['allow_query_exec']
         self.top_k = 5
         self.db = SQLDatabase.from_uri(config['uri'])
         self.sql_toolkit = self.initialize_sql_toolkit()
-        sql_tools = self.sql_toolkit.get_tools()
+        sql_tools = self.sql_toolkit.get_tools()        
+        if self.allow_query_exec == False:
+            sql_tools.remove(sql_tools[0])
+
         extra_tools = self.create_agent_tools(sql_tools)
 
         prompt = get_sql_prompt()
@@ -78,6 +85,7 @@ class DatabaseClient:
             # To be implemented
 
         extra_tools = [get_today_date]
+        extra_tools = []
         return input_tools + extra_tools
 
 
