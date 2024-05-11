@@ -24,13 +24,11 @@ class DatabaseClient:
         self.llm = llm
         self.emb = emb
         self.dialect = config['dialect']
+        self.schema_file = config['schema_file']
         self.top_k = 5
-        self.db = SQLDatabase.from_uri(config['uri'])     
-        if os.path.exists('libs/schemas.json'):
-            sql_toolkit = CustomSQLDatabaseToolkit(db=self.db, llm=self.llm)
-        else:
-            sql_toolkit = SQLDatabaseToolkit(db=self.db, llm=self.llm)
-        sql_tools = sql_toolkit.get_tools()
+        self.db = SQLDatabase.from_uri(config['uri'])
+        self.sql_toolkit = self.initialize_sql_toolkit()
+        sql_tools = self.sql_toolkit.get_tools()
         extra_tools = self.create_agent_tools(sql_tools)
 
         prompt = get_sql_prompt()
@@ -46,6 +44,12 @@ class DatabaseClient:
                                             max_iterations=10) 
                                             
         self.sql_chain = create_sql_query_chain(self.llm, self.db)  # not used, but can be used for simple tasks.
+
+    def initialize_sql_toolkit(self):
+        if self.schema_file:
+            return CustomSQLDatabaseToolkit(db=self.db, llm=self.llm, schema_file=self.schema_file)
+        else:
+            return SQLDatabaseToolkit(db=self.db, llm=self.llm)
 
     def create_agent_tools(self, input_tools):
 
@@ -92,11 +96,12 @@ class CustomListSQLDatabaseTool(ListSQLDatabaseTool):
     """Tool for getting tables names."""
     name: str = "custom_sql_db_list_tables"
     description: str = "Input is an empty string, output is a comma-separated list of tables in the database."
-    schema_file: str = "./libs/schemas.json"
+    schema_file: str
     table_descriptions: dict = {}
 
-    def __init__(self, db, **kwargs):
-        super().__init__(db=db, **kwargs)
+    def __init__(self, db, schema_file, **kwargs):
+        super().__init__(db=db, schema_file=schema_file, **kwargs)
+        self.schema_file = schema_file
         self.table_descriptions = load_table_descriptions(self.schema_file)
 
     def _run(
@@ -113,11 +118,12 @@ class CustomInfoSQLDatabaseTool(InfoSQLDatabaseTool):
 
     name: str = "custom_sql_db_schema"
     description: str = "Get the detailed schema and sample rows for the specified SQL tables."
-    schema_file: str = "./libs/schemas.json"
+    schema_file: str
     db_schemas: dict = {}
 
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
+    def __init__(self, schema_file, **kwargs):
+        super().__init__(schema_file=schema_file, **kwargs)
+        self.schema_file = schema_file
 
         with open(self.schema_file, 'r') as file:
            data = json.load(file)
@@ -165,20 +171,23 @@ class CustomInfoSQLDatabaseTool(InfoSQLDatabaseTool):
 
         return table_details
 
-
-
 class CustomSQLDatabaseToolkit(BaseToolkit):
     """
     Toolkit for interacting with SQL databases, now using the custom list tool.
     """
     db: SQLDatabase = Field(exclude=True)
     llm: BaseLanguageModel = Field(exclude=True)
+    schema_file: str
 
     class Config:
         arbitrary_types_allowed = True
 
+    def __init__(self, db, llm, schema_file, **kwargs):
+        super().__init__(db=db, llm=llm, schema_file=schema_file, **kwargs)
+        self.schema_file = schema_file
+
     def get_tools(self) -> List[BaseTool]:
-        list_sql_database_tool = CustomListSQLDatabaseTool(db=self.db)  
+        list_sql_database_tool = CustomListSQLDatabaseTool(db=self.db, schema_file=self.schema_file)  
         info_sql_database_tool_description = (
             "Input to this tool is a comma-separated list of tables, output is the "
             "description about the DB schema and sample rows for those tables. "
@@ -188,7 +197,7 @@ class CustomSQLDatabaseToolkit(BaseToolkit):
             "Example Input: table1, table2, table3."
             "The output is in JSON format: {{\"{{table_name}}\": {{\"table\": \"{{table_name}}\", \"cols\": {{\"{{col_name}}\": \"{{col_desc}}\",...}}, \"create_table_sql\": \"{{DDL statement for the table}}\", \"sample_rows\": \"{{sample rows for the table}}\"}}}}")
         info_sql_database_tool = CustomInfoSQLDatabaseTool(
-            db=self.db, description=info_sql_database_tool_description
+            db=self.db, description=info_sql_database_tool_description, schema_file=self.schema_file
         )
         query_sql_database_tool_description = (
             "Input to this tool is a detailed and correct SQL query, output is a "

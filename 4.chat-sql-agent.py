@@ -28,7 +28,6 @@ CLAUDE_PROMPT = ChatPromptTemplate.from_messages(
     ]
 )
 
-
 def new_chat() -> None:
     """
     Reset the chat session and initialize a new conversation chain.
@@ -60,7 +59,7 @@ def render_sidebar() -> Tuple[str, Dict, Dict, Dict]:
             "max_tokens": 4096,
             "system": """
             You are a helpful assistant for answering questions in Korean. 
-            Please provide a response in the <final_answer></final_answer) section.
+            Please provide a response in the <final_answer></final_answer> section.
             Firstly, exaplain the process that led to the final answer. 
             If you used the SQL tools for resolving the user's question, provide the detailed answer to the user's question with numbers and the used SQL queries within a Markdown code block."""
          }
@@ -80,9 +79,21 @@ def render_sidebar() -> Tuple[str, Dict, Dict, Dict]:
             database_dialect = "SQLite"
             database_uri = "sqlite:///Chinook.db"
 
+        with st.sidebar:
+            add_schema_desc = st.checkbox("스키마 설명 추가", value=False)
+
+            if add_schema_desc:
+                schema_file = st.text_input("스키마 파일 경로", value="libs/default-schema.json")
+
+                if not os.path.exists(schema_file):
+                    st.error("스키마 파일 이름을 확인해주세요!")
+            else:
+                schema_file = ""
+
         database_config = {
             "dialect": database_dialect,
-            "uri": database_uri
+            "uri": database_uri,
+            "schema_file": schema_file
         }
 
     return model_name_select, model_info, model_kwargs, database_config
