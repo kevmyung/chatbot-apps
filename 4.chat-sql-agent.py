@@ -19,24 +19,12 @@ INIT_MESSAGE = {
     "content": "안녕하세요! 저는 Bedrock AI 챗봇입니다. 무엇을 도와드릴까요?",
 }
 
-CLAUDE_PROMPT = ChatPromptTemplate.from_messages(
-    [
-        MessagesPlaceholder(variable_name="history"),
-        MessagesPlaceholder(variable_name="input"),
-    ]
-)
-
 def new_chat() -> None:
     """
     Reset the chat session and initialize a new conversation chain.
     """
     st.session_state["messages"] = [INIT_MESSAGE]
     st.session_state["langchain_messages"] = []
-
-def generate_response(conversation: ConversationChain, input: Union[str, List[dict]]) -> str:
-    return conversation.invoke(
-        {"input": input}, {"callbacks": [StreamHandler(st.empty())]}
-    )
 
 def render_sidebar() -> Tuple[str, Dict, Dict, Dict]:
     st.sidebar.button("채팅 초기화", on_click=new_chat, type="primary")

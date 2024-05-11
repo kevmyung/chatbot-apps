@@ -109,7 +109,6 @@ class CustomListSQLDatabaseTool(ListSQLDatabaseTool):
 
     def __init__(self, db, schema_file, **kwargs):
         super().__init__(db=db, schema_file=schema_file, **kwargs)
-        self.schema_file = schema_file
         self.table_descriptions = load_table_descriptions(self.schema_file)
 
     def _run(
@@ -131,7 +130,6 @@ class CustomInfoSQLDatabaseTool(InfoSQLDatabaseTool):
 
     def __init__(self, schema_file, **kwargs):
         super().__init__(schema_file=schema_file, **kwargs)
-        self.schema_file = schema_file
 
         with open(self.schema_file, 'r') as file:
            data = json.load(file)
@@ -192,7 +190,6 @@ class CustomSQLDatabaseToolkit(BaseToolkit):
 
     def __init__(self, db, llm, schema_file, **kwargs):
         super().__init__(db=db, llm=llm, schema_file=schema_file, **kwargs)
-        self.schema_file = schema_file
 
     def get_tools(self) -> List[BaseTool]:
         list_sql_database_tool = CustomListSQLDatabaseTool(db=self.db, schema_file=self.schema_file)  
