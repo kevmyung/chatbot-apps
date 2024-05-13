@@ -93,7 +93,9 @@ def pdf_to_images(pdf_filepath):
         print(f"Failed to convert PDF to images: {e}")
 
 
-def faiss_preprocess_document(uploaded_files: List[st.runtime.uploaded_file_manager.UploadedFile], chat_model: ChatModel) -> FAISS:
+def faiss_preprocess_document(uploaded_files: List[st.runtime.uploaded_file_manager.UploadedFile], 
+                              chat_model: ChatModel, 
+                              upload_message: str) -> FAISS:
     if uploaded_files:
         docs = []
         if not os.path.exists(FAISS_ORIGIN):
@@ -123,7 +125,7 @@ def faiss_preprocess_document(uploaded_files: List[st.runtime.uploaded_file_mana
 
         retriever = vectordb.as_retriever(search_type="mmr", search_kwargs={"k": 2, "fetch_k": 4})
         with st.sidebar:
-            st.write("지식기반 업데이트가 완료됐어요. X를 눌러 파일을 닫아주세요. 이제 업로드 된 파일에 대해 질문하거나, 추가로 업로드해도 좋습니다.")
+            st.success(upload_message)
     else:
         if os.path.exists(f"{FAISS_PATH}/{INDEX_FILE}"):
             vectordb = FAISS.load_local(folder_path=FAISS_PATH, embeddings=chat_model.emb, allow_dangerous_deserialization=True)
@@ -134,7 +136,10 @@ def faiss_preprocess_document(uploaded_files: List[st.runtime.uploaded_file_mana
     return retriever
 
 
-def opensearch_preprocess_document(uploaded_file: st.runtime.uploaded_file_manager.UploadedFile, chat_model: ChatModel, os_client: OpenSearchClient):
+def opensearch_preprocess_document(uploaded_file: st.runtime.uploaded_file_manager.UploadedFile, 
+                                   chat_model: ChatModel, 
+                                   os_client: OpenSearchClient, 
+                                   upload_message: str):
     if uploaded_file:
         if not os_client.is_index_present():
             os_client.create_index()
@@ -156,7 +161,7 @@ def opensearch_preprocess_document(uploaded_file: st.runtime.uploaded_file_manag
         st.session_state['vector_empty'] = False
         
         with st.sidebar:
-            st.write("지식기반 업데이트가 완료됐어요. X를 눌러 파일을 닫아주세요. 이제 업로드 된 파일에 대해 질문하거나, 추가로 업로드해도 좋습니다.")
+            st.success(upload_message)
     else:
         if os_client.is_index_present(): 
             st.session_state['vector_empty'] = False
@@ -168,7 +173,7 @@ def opensearch_reset_on_click() -> None:
         if os_client.is_index_present():
             os_client.delete_index()
     st.session_state['vector_empty'] = True
-    st.success("지식기반이 초기화 됐습니다.")
+    st.success(st.session_state['init_kb_message'])
 
 
 def reset_faiss_index() -> None:
@@ -176,7 +181,7 @@ def reset_faiss_index() -> None:
     shutil.rmtree(FAISS_PATH, ignore_errors=True)
     shutil.rmtree(FAISS_ORIGIN, ignore_errors=True)
     st.session_state['vector_empty'] = True
-    st.success("지식기반이 초기화 됐습니다.")
+    st.success(st.session_state['init_kb_message'])
 
 def faiss_reset_on_click() -> None:
     reset_faiss_index()

@@ -7,20 +7,16 @@ from langchain.chains import ConversationChain
 from langchain.memory import ConversationBufferWindowMemory
 from langchain_community.chat_message_histories import StreamlitChatMessageHistory
 
-from libs.config import load_model_config
+from libs.config import load_model_config, load_language_config
 from libs.models import ChatModel
 from libs.chat_utils import StreamHandler, display_chat_messages, langchain_messages_format
 from libs.file_utils import process_uploaded_files
 
-region_name = 'us-east-1'
-st.set_page_config(page_title='친절한 Bedrock 챗봇', page_icon="🤖", layout="wide")
-st.title("🤖 친절한 Bedrock 챗봇")
+st.set_page_config(page_title='Bedrock AI Chatbot', page_icon="🤖", layout="wide")
+st.title("🤖 Bedrock AI Chatbot")
+lang_config = {}
 
-INIT_MESSAGE = {
-    "role": "assistant",
-    "content": "안녕하세요! 저는 Bedrock AI 챗봇입니다. 무엇을 도와드릴까요?",
-}
-
+INIT_MESSAGE = {}
 CLAUDE_PROMPT = ChatPromptTemplate.from_messages(
     [
         MessagesPlaceholder(variable_name="history"),
@@ -28,28 +24,63 @@ CLAUDE_PROMPT = ChatPromptTemplate.from_messages(
     ]
 )
 
+def set_init_message(init_message):
+    global INIT_MESSAGE
+    INIT_MESSAGE = {
+        "role": "assistant",
+        "content": init_message
+    }
+
+def handle_language_change():
+    global lang_config, INIT_MESSAGE
+    lang_config = load_language_config(st.session_state['language_select'])
+    set_init_message(lang_config['init_message'])
+    new_chat()
+
 def generate_response(conversation: ConversationChain, input: Union[str, List[dict]]) -> str:
     return conversation.invoke(
         {"input": input}, {"callbacks": [StreamHandler(st.empty())]}
     )
 
+def new_chat() -> None:
+    st.session_state["messages"] = [INIT_MESSAGE]
+    st.session_state["langchain_messages"] = []
+
 def render_sidebar() -> Tuple[Dict, Dict, List[st.runtime.uploaded_file_manager.UploadedFile]]:
+    st.sidebar.button("New Chat", on_click=new_chat, type="primary")
     with st.sidebar:
+        # Language
+        global lang_config
+        language = st.selectbox(
+            'Language 🌎',
+            ['Korean', 'English'],
+            key='language_select',
+            on_change=handle_language_change
+        )
+        lang_config = load_language_config(language)
+        set_init_message(lang_config['init_message'])
+
+        # Model
         model_config = load_model_config()
         model_name_select = st.selectbox(
-            '채팅 모델 💬',
-            list(model_config["models"].keys()),
-            key=f"{st.session_state['widget_key']}_Model_Id",
+            lang_config['model_selection'],
+            list(model_config.keys()),
+            key='model_name',
         )
-        st.session_state["model_name"] = model_name_select
-        model_info = model_config["models"][model_name_select]
-        model_info["region_name"] = region_name
-        system_prompt_disabled = model_config.get("system_prompt_disabled", False)
+        model_info = model_config[model_name_select]
+
+        # Region
+        model_info["region_name"] = st.selectbox(
+            lang_config['region'],
+            ['us-east-1', 'us-west-2', 'ap-northeast-1'],
+            key='bedrock_region',
+        )
+
+        # System Prompt
         system_prompt = st.text_area(
-            "시스템 프롬프트 (역할 지정) 👤",
-            value = "You're a cool assistant, love to respond with emoji.",
-            key=f"{st.session_state['widget_key']}_System_Prompt",
-            disabled=system_prompt_disabled
+            lang_config['system_prompt'],
+            value="You're a cool assistant, love to respond with emoji.",
+            key='system_prompt',
         )
 
         model_kwargs = {
@@ -58,30 +89,23 @@ def render_sidebar() -> Tuple[Dict, Dict, List[st.runtime.uploaded_file_manager.
             "top_k": 200,
             "max_tokens": 4096,
         }
-        if not model_info.get("system_prompt_disabled", False):
-            model_kwargs["system"] = system_prompt
+        model_kwargs["system"] = system_prompt
 
-        if "file_uploader_key" not in st.session_state:
-            st.session_state["file_uploader_key"] = 0
-
-        image_upload_disabled = model_info.get("image_upload_disabled", False)
+        # File Uploader
         uploaded_files = st.file_uploader(
-            "파일을 선택해주세요 📎",
+            lang_config['file_selection'],
             type=["jpg", "jpeg", "png", "txt", "pdf", "csv", "py"],
             accept_multiple_files=True,
-            key=st.session_state["file_uploader_key"],
-            disabled=image_upload_disabled,
+            key="file_uploader_key"
         )
 
     return model_info, model_kwargs, uploaded_files
 
 def main() -> None:
-    if "widget_key" not in st.session_state:
-        st.session_state["widget_key"] = str(random.randint(1, 1000000))
 
     model_info, model_kwargs, uploaded_files = render_sidebar()
 
-    chat_model = ChatModel(st.session_state["model_name"], model_info, model_kwargs)
+    chat_model = ChatModel(model_info, model_kwargs)
     conv_chain = ConversationChain(
         llm=chat_model.llm,
         verbose=True,

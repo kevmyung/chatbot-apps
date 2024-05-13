@@ -6,46 +6,72 @@ from langchain.chains import ConversationChain
 from langchain.memory import ConversationBufferWindowMemory
 from langchain_community.chat_message_histories import StreamlitChatMessageHistory
 
-from libs.config import load_model_config
+from libs.config import load_model_config, load_language_config
 from libs.opensearch import OpenSearchClient, get_opensearch_retriever
 from libs.models import ChatModel
 from libs.chat_utils import StreamHandler, display_chat_messages, langchain_messages_format
 from libs.file_utils import opensearch_preprocess_document, opensearch_reset_on_click
 
-region_name = 'us-east-1'
-st.set_page_config(page_title='친절한 Bedrock 챗봇', page_icon="🤖", layout="wide")
-st.title("🤖 친절한 Bedrock 챗봇")
+st.set_page_config(page_title='Bedrock AI Chatbot', page_icon="🤖", layout="wide")
+st.title("🤖 Bedrock AI Chatbot")
+lang_config = {}
 
-INIT_MESSAGE = {
-    "role": "assistant",
-    "content": "안녕하세요! 저는 Bedrock AI 챗봇입니다. 무엇을 도와드릴까요?",
-}
+INIT_MESSAGE = {}
+CLAUDE_PROMPT = ChatPromptTemplate.from_messages(
+    [
+        MessagesPlaceholder(variable_name="history"),
+        MessagesPlaceholder(variable_name="input"),
+    ]
+)
 
-CLAUDE_PROMPT = ChatPromptTemplate.from_messages([
-    MessagesPlaceholder(variable_name="history"),
-    MessagesPlaceholder(variable_name="input"),
-])
+def set_init_message(init_message):
+    global INIT_MESSAGE
+    INIT_MESSAGE = {
+        "role": "assistant",
+        "content": init_message
+    }
+
+def handle_language_change():
+    global lang_config, INIT_MESSAGE
+    lang_config = load_language_config(st.session_state['language_select'])
+    set_init_message(lang_config['init_message'])
+    new_chat()
 
 def generate_response(conversation: ConversationChain, input: Union[str, List[dict]]) -> str:
     return conversation.invoke({"input": input}, {"callbacks": [StreamHandler(st.empty())]})
 
+def new_chat() -> None:
+    st.session_state["messages"] = [INIT_MESSAGE]
+    st.session_state["langchain_messages"] = []
+
 def render_sidebar() -> Tuple[Dict, Dict, List[st.runtime.uploaded_file_manager.UploadedFile], List]:
+    st.sidebar.button("New Chat", on_click=new_chat, type="primary")
     with st.sidebar:
+        # Language
+        global lang_config
+        language = st.selectbox(
+            'Language 🌎',
+            ['Korean', 'English'],
+            key='language_select',
+            on_change=handle_language_change
+        )
+        lang_config = load_language_config(language)
+        set_init_message(lang_config['init_message'])
+
+        # Model
         model_config = load_model_config()
         model_name_select = st.selectbox(
-            '채팅 모델 💬',
-            list(model_config["models"].keys()),
-            key=f"{st.session_state['widget_key']}_Model_Id",
+            lang_config['model_selection'],
+            list(model_config.keys()),
+            key='model_name',
         )
-        st.session_state["model_name"] = model_name_select
-        model_info = model_config["models"][model_name_select]
-        model_info["region_name"] = region_name
-        system_prompt_disabled = model_config.get("system_prompt_disabled", False)
-        system_prompt = st.text_area(
-            "시스템 프롬프트 (역할 지정) 👤",
-            value="You're a cool assistant, love to respond with emoji.",
-            key=f"{st.session_state['widget_key']}_System_Prompt",
-            disabled=system_prompt_disabled
+        model_info = model_config[model_name_select]
+
+        # Region
+        model_info["region_name"] = st.selectbox(
+            lang_config['region'],
+            ['us-east-1', 'us-west-2', 'ap-northeast-1'],
+            key='bedrock_region',
         )
 
         model_kwargs = {
@@ -53,25 +79,30 @@ def render_sidebar() -> Tuple[Dict, Dict, List[st.runtime.uploaded_file_manager.
             "top_p": 1.0,
             "top_k": 200,
             "max_tokens": 4096,
+            "system": """You are a helpful assistant that answers users' questions based on the context. 
+            Offer kind and accurate responses based on the given context. If the answer is not in the provided context, respond that you do not know."""
         }
-        if not system_prompt_disabled:
-            model_kwargs["system"] = system_prompt
 
+        # File Uploader
         uploaded_files = st.file_uploader(
-            "파일을 선택해주세요 📎",
+            lang_config['file_selection'],
             type=["pdf"],
             accept_multiple_files=False,
-            key=st.session_state["file_uploader_key"],
+            key="file_uploader_key"
         )
 
     col1, col2 = st.sidebar.columns(2)
 
     with col1:
-        st.button("지식 초기화", on_click=opensearch_reset_on_click)
+        st.button(
+            lang_config['init_knowledge'],
+            on_click=opensearch_reset_on_click
+        )
+        st.session_state['init_kb_message'] = lang_config['init_kb_message']
 
     with col2:
-        semantic_weight = st.slider("하이브리드 검색 강도", 0.0, 1.0, 0.51, 0.01, 
-                                    help="1에 가까울수록 시맨틱 검색의 강도를 높입니다. 0에 가까우면 텍스트 매칭 가중치를 높입니다.", 
+        semantic_weight = st.slider(lang_config['hybrid_weight'], 0.0, 1.0, 0.51, 0.01, 
+                                    help=lang_config['hybrid_desc'], 
                                     key="semantic_weight_sidebar")
         ensemble = [semantic_weight, 1 - semantic_weight]
         st.session_state["ensemble"] = ensemble
@@ -80,26 +111,18 @@ def render_sidebar() -> Tuple[Dict, Dict, List[st.runtime.uploaded_file_manager.
 
 
 def init_session_state():
-    if "widget_key" not in st.session_state:
-        st.session_state["widget_key"] = str(random.randint(1, 1000000))
-
     if "messages" not in st.session_state:
         st.session_state["messages"] = [INIT_MESSAGE]
 
     if "vector_empty" not in st.session_state:
         st.session_state["vector_empty"] = True
 
-    if "file_uploader_key" not in st.session_state:
-        st.session_state["file_uploader_key"] = 0
-
-
 def main() -> None:
-
-    init_session_state()
+    #init_session_state()
 
     model_info, model_kwargs, uploaded_files, ensemble = render_sidebar()
 
-    chat_model = ChatModel(st.session_state["model_name"], model_info, model_kwargs)
+    chat_model = ChatModel(model_info, model_kwargs)
     memory = ConversationBufferWindowMemory(k=10, ai_prefix="Assistant", chat_memory=StreamlitChatMessageHistory(), return_messages=True)
     chain = ConversationChain(
         llm=chat_model.llm,
@@ -107,6 +130,12 @@ def main() -> None:
         memory=memory,
         prompt=CLAUDE_PROMPT,
     )
+
+    if "messages" not in st.session_state:
+        st.session_state["messages"] = [INIT_MESSAGE]
+
+    if "vector_empty" not in st.session_state:
+        st.session_state["vector_empty"] = True
 
     display_chat_messages(uploaded_files)
     prompt = st.chat_input()
@@ -116,7 +145,7 @@ def main() -> None:
         st.session_state["os_client"] = os_client
     else:
         os_client = st.session_state["os_client"]
-    opensearch_preprocess_document(uploaded_files, chat_model, os_client)
+    opensearch_preprocess_document(uploaded_files, chat_model, os_client, lang_config['upload_message'])
     os_retriever = get_opensearch_retriever(os_client)
 
     is_vector_empty = st.session_state["vector_empty"]

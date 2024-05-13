@@ -3,7 +3,7 @@ from langchain_aws import ChatBedrock
 from langchain_community.embeddings import BedrockEmbeddings
 
 class ChatModel:
-    def __init__(self, model_name: str, model_info: Dict, model_kwargs: Dict):
+    def __init__(self, model_info: Dict, model_kwargs: Dict):
         self.model_info = model_info
         self.model_id = self.model_info["model_id"]
         self.model_kwargs = model_kwargs
