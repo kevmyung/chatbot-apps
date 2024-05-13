@@ -111,11 +111,11 @@ def render_sidebar() -> Tuple[str, Dict, Dict, Dict]:
             "allow_query_exec": allow_query_exec
         }
 
-    return model_name_select, model_info, model_kwargs, database_config
+    return model_info, model_kwargs, database_config
 
 def main() -> None:
     
-    model_name, model_info, model_kwargs, database_config = render_sidebar()
+    model_info, model_kwargs, database_config = render_sidebar()
     chat_model = ChatModel(model_info, model_kwargs)
 
     if "messages" not in st.session_state:
