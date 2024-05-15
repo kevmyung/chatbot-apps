@@ -1,7 +1,7 @@
 opensearch-auth:
-  domain_endpoint: "{ }"
-  user_id: "{ }"
-  user_password: "{ }"
+  domain_endpoint: ""
+  user_id: ""
+  user_password: ""
 
 settings:
   index.knn: true
@@ -22,7 +22,7 @@ mappings:
       analyzer: nori
     vector_field:
       type: knn_vector
-      dimension: 1536
+      dimension: 1024
       method:
         engine: faiss
         name: hnsw

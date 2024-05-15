@@ -8,7 +8,7 @@ class ChatModel:
         self.model_id = self.model_info["model_id"]
         self.model_kwargs = model_kwargs
         self.llm = ChatBedrock(model_id=self.model_id, region_name=self.model_info['region_name'], model_kwargs=model_kwargs, streaming=True)
-        self.emb = BedrockEmbeddings(model_id="amazon.titan-embed-text-v2:0", region_name=self.model_info['region_name'])
+        self.emb = BedrockEmbeddings(model_id="amazon.titan-embed-text-v2:0", region_name=self.model_info['region_name'], model_kwargs={"dimensions":1024})
     
     def format_prompt(self, prompt: str) -> Union[str, List[Dict]]:
         model_info = self.model_info
