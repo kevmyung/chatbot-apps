@@ -136,8 +136,28 @@ def faiss_preprocess_document(uploaded_files: List[st.runtime.uploaded_file_mana
     return retriever
 
 
+def sample_query_indexing(os_client, lang_config):
+    rag_query_file = st.text_input(lang_config['rag_query_file'], value="libs/example_queries.json")
+    if not os.path.exists(rag_query_file):
+        st.warning(lang_config['file_not_found'])
+
+    if st.sidebar.button(lang_config['process_query']):
+        with st.spinner("Now processing..."):
+            if os_client.is_index_present:
+                os_client.delete_index()
+                os_client.create_index() 
+
+            with open(rag_query_file, 'r') as file:
+                bulk_data = file.read()
+
+            response = os_client.conn.bulk(body=bulk_data)
+            if response["errors"]:
+                st.error("Failed")
+            else:
+                st.success("Success")
+    
+
 def opensearch_preprocess_document(uploaded_file: st.runtime.uploaded_file_manager.UploadedFile, 
-                                   chat_model: ChatModel, 
                                    os_client: OpenSearchClient, 
                                    upload_message: str):
     if uploaded_file:
@@ -173,7 +193,7 @@ def opensearch_reset_on_click() -> None:
         if os_client.is_index_present():
             os_client.delete_index()
     st.session_state['vector_empty'] = True
-    st.success(st.session_state['init_kb_message'])
+    st.success(st.session_state['clean_kb_message'])
 
 
 def reset_faiss_index() -> None:
@@ -181,7 +201,7 @@ def reset_faiss_index() -> None:
     shutil.rmtree(FAISS_PATH, ignore_errors=True)
     shutil.rmtree(FAISS_ORIGIN, ignore_errors=True)
     st.session_state['vector_empty'] = True
-    st.success(st.session_state['init_kb_message'])
+    st.success(st.session_state['clean_kb_message'])
 
 def faiss_reset_on_click() -> None:
     reset_faiss_index()

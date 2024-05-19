@@ -16,6 +16,7 @@ st.set_page_config(page_title='Bedrock AI Chatbot', page_icon="🤖", layout="wi
 st.title("🤖 Bedrock AI Chatbot")
 lang_config = {}
 
+INDEX_NAME = 'rag_index'
 INIT_MESSAGE = {}
 CLAUDE_PROMPT = ChatPromptTemplate.from_messages(
     [
@@ -95,10 +96,10 @@ def render_sidebar() -> Tuple[Dict, Dict, List[st.runtime.uploaded_file_manager.
 
     with col1:
         st.button(
-            lang_config['init_knowledge'],
+            lang_config['clean_knowledge'],
             on_click=opensearch_reset_on_click
         )
-        st.session_state['init_kb_message'] = lang_config['init_kb_message']
+        st.session_state['clean_kb_message'] = lang_config['clean_kb_message']
 
     with col2:
         semantic_weight = st.slider(lang_config['hybrid_weight'], 0.0, 1.0, 0.51, 0.01, 
@@ -141,11 +142,11 @@ def main() -> None:
     prompt = st.chat_input()
 
     if "os_client" not in st.session_state:
-        os_client = OpenSearchClient(llm = chat_model.llm, emb = chat_model.emb)
+        os_client = OpenSearchClient(emb = chat_model.emb, index_name=INDEX_NAME, mapping_name='mappings-rag')
         st.session_state["os_client"] = os_client
     else:
         os_client = st.session_state["os_client"]
-    opensearch_preprocess_document(uploaded_files, chat_model, os_client, lang_config['upload_message'])
+    opensearch_preprocess_document(uploaded_files, os_client, lang_config['upload_message'])
     os_retriever = get_opensearch_retriever(os_client)
 
     is_vector_empty = st.session_state["vector_empty"]
@@ -154,7 +155,7 @@ def main() -> None:
         if not is_vector_empty == True:
             context_text = os_retriever._get_relevant_documents(query = prompt, ensemble = ensemble)
 
-        prompt_new = f"Here's some context for you. However, do not mention this context unless it is directly relevant to the user's question. It is essential to deliver an answer that precisely addresses the user's needs \n<context>\n{context_text}</context>\n\n{prompt}\n\n"
+        prompt_new = f"""Here's some context for you. Use the context only when it is relevant to the user's question. Deliver an answer to address the user's inqueries. \n<context>\n{context_text}</context>\n\n{prompt}\n\n"""
 
         formatted_prompt = chat_model.format_prompt(prompt_new)
         st.session_state.messages.append({"role": "user", "content": formatted_prompt})

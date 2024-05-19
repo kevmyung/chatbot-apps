@@ -23,12 +23,12 @@ from sqlalchemy.exc import SAWarning
 warnings.filterwarnings("ignore", r".*support Decimal objects natively, and SQLAlchemy", SAWarning)
 
 class DatabaseClient:
-    def __init__(self, llm, emb, config):
+    def __init__(self, llm, config):
         self.llm = llm
-        self.emb = emb
         self.dialect = config['dialect']
         self.schema_file = config['schema_file']
         self.allow_query_exec = config['allow_query_exec']
+        self.enable_rag_query = config['enable_rag_query']
         self.top_k = 5
         self.db = SQLDatabase.from_uri(config['uri'])
         self.sql_toolkit = self.initialize_sql_toolkit()
@@ -50,7 +50,7 @@ class DatabaseClient:
                                             #max_execution_time = 30,
                                             max_iterations=10) 
                                             
-        self.sql_chain = create_sql_query_chain(self.llm, self.db)  # not used, but can be used for simple tasks.
+        self.sql_chain = create_sql_query_chain(self.llm, self.db)  # not used currently, but can be used for simple tasks.
 
     def initialize_sql_toolkit(self):
         if self.schema_file:

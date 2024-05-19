@@ -6,13 +6,15 @@ from langchain_community.callbacks.streamlit import StreamlitCallbackHandler
 from libs.db_utils import DatabaseClient
 from libs.config import load_model_config, load_language_config
 from libs.models import ChatModel
+from libs.opensearch import OpenSearchClient, get_opensearch_retriever
 from libs.chat_utils import display_chat_messages
+from libs.file_utils import sample_query_indexing
 
 st.set_page_config(page_title='Bedrock AI Chatbot', page_icon="🤖", layout="wide")
 st.title("🤖 Bedrock AI Chatbot")
 
 lang_config = {}
-
+INDEX_NAME = 'example_queries'
 INIT_MESSAGE = {}
 
 def set_init_message(init_message):
@@ -91,49 +93,69 @@ def render_sidebar() -> Tuple[str, Dict, Dict, Dict]:
 
         with st.sidebar:
             add_schema_desc = st.checkbox(lang_config['schema_desc'], value=False)
-
+            schema_file = ""
             if add_schema_desc:
                 schema_file = st.text_input(lang_config['schema_file'], value="libs/default-schema.json")
-
                 if not os.path.exists(schema_file):
-                    lang_config['schema_file_msg']
-
-            else:
-                schema_file = ""
+                    st.warning(lang_config['file_not_found'])
 
         with st.sidebar:
-            allow_query_exec = st.checkbox(lang_config['query_exec'], value=True)
+            allow_query_exec = st.checkbox(lang_config['query_exec'], value=False)
 
         database_config = {
             "dialect": database_dialect,
             "uri": database_uri,
             "schema_file": schema_file,
-            "allow_query_exec": allow_query_exec
+            "allow_query_exec": allow_query_exec,
         }
 
     return model_info, model_kwargs, database_config
 
+def find_sample_queries(os_client, prompt):
+    examples = ""
+    docs = os_client.vector_store.similarity_search(
+        query=prompt, 
+        vector_field="input_v", 
+        text_field="input",
+        score_threshold=0.3
+    )
+    for doc in docs:
+        input_text = doc.metadata.get('input', None)
+        query = doc.metadata.get('query', None)
+        if input_text and query:
+            examples += f"Question: {input_text}\n"
+            examples += f"Answer: {query}\n\n"
+    return examples
+
 def main() -> None:
-    
     model_info, model_kwargs, database_config = render_sidebar()
     chat_model = ChatModel(model_info, model_kwargs)
+    with st.sidebar:
+        enable_rag_query = st.checkbox(lang_config['rag_query'], value=False)
+        if enable_rag_query:
+            os_client = OpenSearchClient(emb=chat_model.emb, index_name=INDEX_NAME, mapping_name='mappings-sql')
+            sample_query_indexing(os_client, lang_config)            
+        database_config['enable_rag_query'] = enable_rag_query
 
     if "messages" not in st.session_state:
         st.session_state.messages = [INIT_MESSAGE] 
 
-    db_client = DatabaseClient(chat_model.llm, chat_model.emb, database_config)
-
-    display_chat_messages([])  
+    db_client = DatabaseClient(chat_model.llm, database_config)
+            
+    display_chat_messages([])
 
     prompt = st.chat_input(placeholder=lang_config['example_msg'])
-    
+
     if prompt:        
+        qa_examples = ""
+        if enable_rag_query:
+            qa_examples = find_sample_queries(os_client, prompt)
         st.session_state.messages.append({"role": "user", "content": prompt})         
         st.chat_message("user").write(prompt)
         
         with st.chat_message("assistant"):
             callback = StreamlitCallbackHandler(st.container())
-            response = db_client.agent_executor.invoke({"question":prompt, "dialect":db_client.dialect, "chat_history": st.session_state.messages}, config={"callbacks": [callback]})
+            response = db_client.agent_executor.invoke({"question":prompt, "dialect":db_client.dialect, "samples":qa_examples, "chat_history": st.session_state.messages}, config={"callbacks": [callback]})
             st.session_state.messages.append({"role": "assistant", "content": response['output']})
             st.write(response['output'])
 

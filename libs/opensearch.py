@@ -1,24 +1,22 @@
 import os
 import yaml
 from copy import deepcopy
-from typing import List, Optional, Dict
+from typing import List, Optional, Dict, Tuple
 import streamlit as st
 from opensearchpy import OpenSearch, RequestsHttpConnection
 from langchain.schema import BaseRetriever, Document
-from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores import OpenSearchVectorSearch
 
 
 class OpenSearchClient:
-    def __init__(self, llm, emb):
+    def __init__(self, emb, index_name, mapping_name):
         config = self.load_opensearch_config()
-        self.index_name = 'sample_index'
-        self.llm = llm
+        self.index_name = index_name
         self.emb = emb
         self.config = config
         self.endpoint = config['opensearch-auth']['domain_endpoint']
         self.http_auth = (config['opensearch-auth']['user_id'], config['opensearch-auth']['user_password'])
-        self.mapping = {"settings": config['settings'], "mappings": config['mappings']}
+        self.mapping = {"settings": config['settings'], "mappings": config[mapping_name]}
         self.conn = OpenSearch(
             hosts=[{'host': self.endpoint.replace("https://", ""), 'port': 443}],
             http_auth=self.http_auth, 
@@ -50,7 +48,7 @@ class OpenSearchClient:
         self.conn.indices.delete(self.index_name)
 
 
-class OpenSearchRetriever(BaseRetriever):
+class OpenSearchHybridRetriever(BaseRetriever):
     os_client: OpenSearchClient
     k: int = 5
     verbose: bool = True
@@ -68,7 +66,6 @@ class OpenSearchRetriever(BaseRetriever):
             filter = self.filter,
             index_name = os_client.index_name,
             os_conn = os_client.conn,
-            llm = os_client.llm,
             emb = os_client.emb,
             ensemble_weights = ensemble
         )
@@ -77,14 +74,113 @@ class OpenSearchRetriever(BaseRetriever):
 
 
 class retriever_utils():
-    text_splitter = RecursiveCharacterTextSplitter(
-        # Set a really small chunk size, just to show.
-        chunk_size=512,
-        chunk_overlap=0,
-        separators=["\n\n", "\n", ".", " ", ""],
-        length_function=len,
-    )
-    token_limit = 300
+
+    @classmethod 
+    def normalize_search_results(cls, search_results):
+        hits = (search_results["hits"]["hits"])
+        max_score = float(search_results["hits"]["max_score"])
+        for hit in hits:
+            hit["_score"] = float(hit["_score"]) / max_score
+        search_results["hits"]["max_score"] = hits[0]["_score"]
+        search_results["hits"]["hits"] = hits
+        return search_results
+    
+    @classmethod 
+    def search_semantic(cls, **kwargs):
+        if "vector_field" not in kwargs:
+            kwargs["vector_field"] = "vector_field"
+
+        semantic_query = {
+            "query": {
+                "bool": {
+                    "must": [
+                        {
+                            "knn": {
+                                kwargs["vector_field"]: {
+                                    "vector": kwargs["emb"].embed_query(kwargs["query"]),
+                                    "k": kwargs["k"],
+                                }
+                            }
+                        },
+                    ],
+                    "filter": kwargs.get("boolean_filter", []),
+                }
+            },
+            "size": kwargs["k"],
+            #"min_score": 0.3
+        }
+
+        # get semantic search results
+        search_results = lookup_opensearch_document(
+            index_name=kwargs["index_name"],
+            os_conn=kwargs["os_conn"],
+            query=semantic_query,
+        )
+
+        results = []
+        if search_results["hits"]["hits"]:
+            # normalize the scores
+            search_results = cls.normalize_search_results(search_results)
+            for res in search_results["hits"]["hits"]:
+                metadata = res["_source"]["metadata"]
+                metadata["id"] = res["_id"]
+
+                # extract the text contents
+                doc = Document(
+                    page_content=res["_source"]["text"],
+                    metadata=metadata
+                )
+                results.append((doc, res["_score"]))
+
+        return results
+
+    @classmethod
+    def search_lexical(cls, **kwargs):
+        if "text_field" not in kwargs:
+            kwargs["text_field"] = "text"
+
+        lexical_query = {
+            "query": {
+                "bool": {
+                    "must": [
+                        {
+                            "match": {
+                                kwargs["text_field"]: {
+                                    "query": kwargs["query"],
+                                    "operator": "or",
+                                }
+                            }
+                        },
+                    ],
+                    "filter": kwargs["filter"]
+                }
+            },
+            "size": kwargs["k"] 
+        }
+
+        # get lexical search results
+        search_results = lookup_opensearch_document(
+            index_name=kwargs["index_name"],
+            os_conn=kwargs["os_conn"],
+            query=lexical_query,
+        )
+
+        results = []
+        if search_results["hits"]["hits"]:
+            # normalize the scores
+            search_results = cls.normalize_search_results(search_results)
+            for res in search_results["hits"]["hits"]:
+                metadata = res["_source"]["metadata"]
+                metadata["id"] = res["_id"]
+
+                # extract the text contents
+                doc = Document(
+                    page_content=res["_source"]["text"],
+                    metadata=metadata
+                )
+                results.append((doc, res["_score"]))
+
+        return results
 
     @classmethod
     def search_hybrid(cls, **kwargs):
@@ -94,236 +190,67 @@ class retriever_utils():
         assert "index_name" in kwargs, "Check your index_name"
         assert "os_conn" in kwargs, "Check your OpenSearch Connection"
         
-        verbose = kwargs.get("verbose", False)
         search_filter = deepcopy(kwargs.get("filter", []))
-        ensemble_weights = kwargs.get("ensemble_weights")
-
-        def search_sync():
-            similar_docs_semantic = cls.get_semantic_similar_docs(
+        similar_docs_semantic = cls.search_semantic(
                 index_name=kwargs["index_name"],
                 os_conn=kwargs["os_conn"],
                 emb=kwargs["emb"],
                 query=kwargs["query"],
                 k=kwargs.get("k", 5),
                 boolean_filter=search_filter,
-                hybrid=True
             )
-            
-            similar_docs_lexical = cls.get_lexical_similar_docs(
+
+        similar_docs_lexical = cls.search_lexical(
                 index_name=kwargs["index_name"],
                 os_conn=kwargs["os_conn"],
                 query=kwargs["query"],
                 k=kwargs.get("k", 5),
-                minimum_should_match=kwargs.get("minimum_should_match", 0),
+                minimum_should_match=kwargs.get("minimum_should_match", 1),
                 filter=search_filter,
-                hybrid=True
             )
-
-            return similar_docs_semantic, similar_docs_lexical
-
-        similar_docs_semantic, similar_docs_lexical = search_sync()
+        
         # print("semantic_docs:", similar_docs_semantic)
         # print("lexical_docs:", similar_docs_lexical)
 
-        similar_docs = cls.get_ensemble_results(
+        similar_docs = retriever_utils.get_ensemble_results(
             doc_lists=[similar_docs_semantic, similar_docs_lexical],
             weights=kwargs.get("ensemble_weights", [.51, .49]),
-            c=60,
             k=kwargs.get("k", 5),
         )
-
-        similar_docs = list(map(lambda x:x[0], similar_docs))
         
-        return similar_docs
-
-    @classmethod 
-    def get_semantic_similar_docs(cls, **kwargs):
-
-        assert "query" in kwargs, "Check your query"
-        assert "k" in kwargs, "Check your k"
-        assert "os_conn" in kwargs, "Check your OpenSearch Connection"
-        assert "index_name" in kwargs, "Check your index_name"
-
-        def normalize_search_results(search_results):
-
-            hits = (search_results["hits"]["hits"])
-            max_score = float(search_results["hits"]["max_score"])
-            for hit in hits:
-                hit["_score"] = float(hit["_score"]) / max_score
-            search_results["hits"]["max_score"] = hits[0]["_score"]
-            search_results["hits"]["hits"] = hits
-            return search_results
-
-        query = get_opensearch_query(
-            query=kwargs["query"],
-            filter=kwargs.get("boolean_filter", []),
-            search_type="semantic", 
-            vector_field="vector_field", 
-            vector=kwargs["emb"].embed_query(kwargs["query"]),
-            k=kwargs["k"]
-        )
-        query["size"] = kwargs["k"]
-        #query["min_score"] = 0.3
-
-        search_results = lookup_opensearch_document(
-            os_conn=kwargs["os_conn"],
-            query=query,
-            index_name=kwargs["index_name"]
-        )
-        results = []
-        if search_results["hits"]["hits"]:
-            search_results = normalize_search_results(search_results)
-            for res in search_results["hits"]["hits"]:
-
-                metadata = res["_source"]["metadata"]
-                metadata["id"] = res["_id"]
-
-                doc = Document(
-                    page_content=res["_source"]["text"],
-                    metadata=metadata
-                )
-                if kwargs.get("hybrid", False):
-                    results.append((doc, res["_score"]))
-                else:
-                    results.append((doc))
-
-        return results
-
-    @classmethod
-    def get_lexical_similar_docs(cls, **kwargs):
-
-        assert "query" in kwargs, "Check your query"
-        assert "k" in kwargs, "Check your k"
-        assert "os_conn" in kwargs, "Check your OpenSearch Connection"
-        assert "index_name" in kwargs, "Check your index_name"
-
-        def normalize_search_results(search_results):
-
-            hits = (search_results["hits"]["hits"])
-            max_score = float(search_results["hits"]["max_score"])
-            for hit in hits:
-                hit["_score"] = float(hit["_score"]) / max_score
-            search_results["hits"]["max_score"] = hits[0]["_score"]
-            search_results["hits"]["hits"] = hits
-            return search_results
-
-        query = get_opensearch_query(query=kwargs["query"], filter=kwargs["filter"])
-        query["size"] = kwargs["k"]
-
-        search_results = lookup_opensearch_document(
-            os_conn=kwargs["os_conn"],
-            query=query,
-            index_name=kwargs["index_name"]
-        )
-
-        results = []
-        if search_results["hits"]["hits"]:
-            search_results = normalize_search_results(search_results)
-            for res in search_results["hits"]["hits"]:
-
-                metadata = res["_source"]["metadata"]
-                metadata["id"] = res["_id"]
-
-                doc = Document(
-                    page_content=res["_source"]["text"],
-                    metadata=metadata
-                )
-                if kwargs.get("hybrid", False):
-                    results.append((doc, res["_score"]))
-                else:
-                    results.append((doc))
-
-        return results
+        return similar_docs        
 
 
     @classmethod
-    def get_ensemble_results(cls, doc_lists: List[List[Document]], weights, c=60, k=5) -> List[Document]:
-        all_documents = set()
-
-        for doc_list in doc_lists:
-            for (doc, _) in doc_list:
-                all_documents.add(doc.page_content)
-
-        hybrid_score_dic = {doc: 0.0 for doc in all_documents}    
+    def get_ensemble_results(cls, doc_lists: List[List[Tuple[Document, float]]], weights: List[float], k: int = 5) -> List[Document]:
+        hybrid_score_dic: Dict[str, float] = {}
+        doc_map: Dict[str, Document] = {}
+        
+        # Weight-based adjustment
         for doc_list, weight in zip(doc_lists, weights):
-            for rank, (doc, score) in enumerate(doc_list, start=1):
-                score *= weight
-                hybrid_score_dic[doc.page_content] += score
+            for doc, score in doc_list:
+                doc_id = doc.metadata.get("id", doc.page_content)
+                if doc_id not in hybrid_score_dic:
+                    hybrid_score_dic[doc_id] = 0.0
+                hybrid_score_dic[doc_id] += score * weight
+                doc_map[doc_id] = doc
 
-        sorted_documents = sorted(hybrid_score_dic.items(), key=lambda x: x[1], reverse=True)
-
-        page_content_to_doc_map = {doc.page_content: doc for doc_list in doc_lists for (doc, orig_score) in doc_list}
-
-        sorted_docs = [(page_content_to_doc_map[page_content], hybrid_score) for (page_content, hybrid_score) in sorted_documents]
-
-        return sorted_docs[:k]
+        sorted_docs = sorted(hybrid_score_dic.items(), key=lambda x: x[1], reverse=True)
+        return [doc_map[doc_id] for doc_id, _ in sorted_docs[:k]]
 
 
 def get_opensearch_retriever(os_client: OpenSearchClient):
     if "retriever" not in st.session_state:
-        retriever = OpenSearchRetriever(os_client)
+        retriever = OpenSearchHybridRetriever(os_client)
         st.session_state['retriever'] = retriever
     else:
         retriever = st.session_state['retriever']
     return retriever
 
 
-def filter_by_min_score(results, min_score):
-    filtered_results = []
-    for result in results['hits']['hits']:
-        if result['_score'] >= min_score:
-            filtered_results.append(result)
-    return filtered_results
-
-def get_opensearch_query(query: str, filter: List[dict], search_type: str = "lexical", 
-vector_field: Optional[str] = None, vector: Optional[List[float]] = None, k: int = 5) -> dict:
-
-    if search_type == "lexical":
-        query_template = {
-            "query": {
-                "bool": {
-                    "must": [
-                        {
-                            "match": {
-                                "text": {
-                                    "query": query,
-                                    "operator": "or",
-                                }
-                            }
-                        },
-                    ],
-                    "filter": filter
-                }
-            }
-        }
-
-    elif search_type == "semantic":
-        if not vector_field or not vector:
-            raise ValueError("vector_field and vector must be provided for semantic search")
-        query_template = {
-            "query": {
-                "bool": {
-                    "must": [
-                        {
-                            "knn": {
-                                vector_field: {
-                                    "vector": vector,
-                                    "k": k,
-                                }
-                            }
-                        },
-                    ],
-                    "filter": filter
-                }
-            }
-        }
-
-    return query_template
-
-
-def lookup_opensearch_document(os_conn, query, index_name):
+def lookup_opensearch_document(index_name, os_conn, query):
     response = os_conn.search(
-        body=query,
-        index=index_name
+        index=index_name,
+        body=query
     )
     return response
