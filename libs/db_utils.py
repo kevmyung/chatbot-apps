@@ -28,7 +28,6 @@ class DatabaseClient:
         self.dialect = config['dialect']
         self.schema_file = config['schema_file']
         self.allow_query_exec = config['allow_query_exec']
-        self.enable_rag_query = config['enable_rag_query']
         self.top_k = 5
         self.db = SQLDatabase.from_uri(config['uri'])
         self.sql_toolkit = self.initialize_sql_toolkit()
@@ -36,7 +35,7 @@ class DatabaseClient:
         if self.allow_query_exec == False:
             sql_tools.remove(sql_tools[0])
 
-        extra_tools = self.create_agent_tools(sql_tools)
+        extra_tools = self.create_agent_tools()
 
         prompt = get_sql_prompt()
         agent = create_xml_agent(
@@ -58,7 +57,7 @@ class DatabaseClient:
         else:
             return SQLDatabaseToolkit(db=self.db, llm=self.llm)
 
-    def create_agent_tools(self, input_tools):
+    def create_agent_tools(self):
 
         @tool
         def get_today_date(query: str) -> str:
@@ -86,7 +85,7 @@ class DatabaseClient:
 
         extra_tools = [get_today_date]
         extra_tools = []
-        return input_tools + extra_tools
+        return extra_tools
 
 
 def load_table_descriptions(file_path):

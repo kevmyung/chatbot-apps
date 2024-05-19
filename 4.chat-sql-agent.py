@@ -68,7 +68,7 @@ def render_sidebar() -> Tuple[str, Dict, Dict, Dict]:
             "temperature": 0.0,
             "top_p": 1.0,
             "top_k": 200,
-            "max_tokens": 4096,
+            "max_tokens": 20480,
             "system": """
             You are a helpful assistant for answering questions in {language}. 
             Firstly, explain the process that led to the final answer. 
@@ -139,14 +139,13 @@ def main() -> None:
 
     if "messages" not in st.session_state:
         st.session_state.messages = [INIT_MESSAGE] 
-
-    db_client = DatabaseClient(chat_model.llm, database_config)
             
     display_chat_messages([])
 
     prompt = st.chat_input(placeholder=lang_config['example_msg'])
 
     if prompt:        
+        db_client = DatabaseClient(chat_model.llm, database_config)
         qa_examples = ""
         if enable_rag_query:
             qa_examples = find_sample_queries(os_client, prompt)
