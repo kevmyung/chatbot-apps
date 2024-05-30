@@ -55,7 +55,7 @@ streamlit run 3-1.chat-rag-faiss.py
 3. `libs/opensearch.yml` 파일의 연결 정보 업데이트
 4. 챗봇 애플리케이션 실행
 ```
-streamlit run 3-1.chat-rag-faiss.py
+streamlit run 3-2.chat-rag-opensearch-hybrid.py
 ```
 ![Chat with Input](./images/3-2.chat-rag-opensearch.png)
 - 기본 챗봇 기능 (`1. Basic Chat`)
@@ -66,6 +66,9 @@ streamlit run 3-1.chat-rag-faiss.py
 - OpenSearch Hybrid Search 코드 활용 : [aws-ai-ml-workshop-kr](https://github.com/aws-samples/aws-ai-ml-workshop-kr/blob/master/genai/aws-gen-ai-kr/utils/rag.py)
 
 ### 4. **Chat SQL Agent**
+```
+streamlit run 4.chat-sql-agent.py
+```
 ![Chat SQL Agent](./images/4.chat-sql-agent.png)
 - 사용자의 자연어 질문을 Agent 기반으로 SQL 쿼리 변환/실행
 - 샘플 데이터베이스([Chinook DB](https://github.com/lerocha/chinook-database))를 활용하거나, 데이터베이스 URI 입력
