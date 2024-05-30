@@ -1,9 +1,8 @@
 from datetime import datetime
 from langchain_community.utilities import SQLDatabase
 from langchain_community.agent_toolkits import SQLDatabaseToolkit
-from langchain.chains import create_sql_query_chain
 from langchain.agents import AgentExecutor, create_xml_agent, tool
-from .prompts import get_sql_prompt
+from .prompts import get_sql_prompt, get_agent_sys_prompt
 from langchain_community.tools.sql_database.tool import (
     InfoSQLDatabaseTool,
     ListSQLDatabaseTool,
@@ -22,70 +21,22 @@ from sqlalchemy.exc import SAWarning
 
 warnings.filterwarnings("ignore", r".*support Decimal objects natively, and SQLAlchemy", SAWarning)
 
-class DatabaseClient:
-    def __init__(self, llm, config):
-        self.llm = llm
-        self.dialect = config['dialect']
-        self.schema_file = config['schema_file']
-        self.allow_query_exec = config['allow_query_exec']
-        self.top_k = 5
-        self.db = SQLDatabase.from_uri(config['uri'])
-        self.sql_toolkit = self.initialize_sql_toolkit()
-        sql_tools = self.sql_toolkit.get_tools()        
-        if self.allow_query_exec == False:
-            sql_tools.remove(sql_tools[0])
 
-        extra_tools = self.create_agent_tools()
-
-        prompt = get_sql_prompt()
-        agent = create_xml_agent(
-            llm=self.llm,
-            tools=sql_tools+extra_tools,
-            prompt=prompt
-        )
-
-        self.agent_executor = AgentExecutor(agent=agent, 
-                                            tools=sql_tools+extra_tools,
-                                            #max_execution_time = 30,
-                                            max_iterations=10) 
-                                            
-        self.sql_chain = create_sql_query_chain(self.llm, self.db)  # not used currently, but can be used for simple tasks.
-
-    def initialize_sql_toolkit(self):
-        if self.schema_file:
-            return CustomSQLDatabaseToolkit(db=self.db, llm=self.llm, schema_file=self.schema_file)
-        else:
-            return SQLDatabaseToolkit(db=self.db, llm=self.llm)
-
-    def create_agent_tools(self):
-
-        @tool
-        def get_today_date(query: str) -> str:
-            """
-            Use this tool to resolve relative time concepts such as this year, last year, this week, or today by checking today’s date. 
-            Input is an empty string, output will be a string in the format %Y-%m-%d.
-            """
-            import pytz
-            today_date_string = datetime.now(pytz.timezone('Asia/Seoul')).strftime("%Y-%m-%d")
-            return today_date_string
-        
-        @tool
-        def parse_dataframe(chat_history: str):
-            """
-            Useful for extracting and parsing data from chat history.
-            """
-            # To be implemented
-
-        @tool
-        def draw_line_chart(data):
-            """
-            Use this tool when user asks you to draw line chart. 
-            """   
-            # To be implemented
-
-        extra_tools = [get_today_date]
-        extra_tools = []
-        return extra_tools
+def find_sample_queries(os_client, prompt):
+    examples = ""
+    docs = os_client.vector_store.similarity_search(
+        query=prompt, 
+        vector_field="input_v", 
+        text_field="input",
+        score_threshold=0.3
+    )
+    for doc in docs:
+        input_text = doc.metadata.get('input', None)
+        query = doc.metadata.get('query', None)
+        if input_text and query:
+            examples += f"Question: {input_text}\n"
+            examples += f"Answer: {query}\n\n"
+    return examples
 
 
 def load_table_descriptions(file_path):
@@ -98,6 +49,34 @@ def load_table_descriptions(file_path):
             table_descriptions[table_name] = table_desc
     return table_descriptions
 
+
+def initialize_sql_toolkit(db, llm, schema_file):
+    if schema_file:
+        return CustomSQLDatabaseToolkit(db=db, llm=llm, schema_file=schema_file)
+    else:
+        return SQLDatabaseToolkit(db=db, llm=llm)
+
+
+class DatabaseClient:
+    def __init__(self, llm, config):
+        self.llm = llm
+        self.dialect = config['dialect']
+        self.schema_file = config['schema_file']
+        self.allow_query_exec = config['allow_query_exec']
+        self.top_k = 5
+        self.db = SQLDatabase.from_uri(config['uri'])
+        self.sql_toolkit = initialize_sql_toolkit(self.db, self.llm, self.schema_file)
+        sql_tools = self.sql_toolkit.get_tools()        
+        if self.allow_query_exec == False:
+            sql_tools.remove(sql_tools[0])
+
+        prompt = get_sql_prompt()
+        agent = create_xml_agent(
+            llm=self.llm,
+            tools=sql_tools,
+            prompt=prompt
+        )
+        self.agent_executor = AgentExecutor(agent=agent, tools=sql_tools, max_iterations=10) #max_execution_time = 30,
 
 class CustomListSQLDatabaseTool(ListSQLDatabaseTool):
     """Tool for getting tables names."""
@@ -173,7 +152,7 @@ class CustomInfoSQLDatabaseTool(InfoSQLDatabaseTool):
                 col_name = col['col']
                 col_desc = col['col_desc']
                 table_details[table]['cols'][col_name] = col_desc
-
+        print(table_details)
         return table_details
 
 class CustomSQLDatabaseToolkit(BaseToolkit):
@@ -227,3 +206,4 @@ class CustomSQLDatabaseToolkit(BaseToolkit):
             list_sql_database_tool,
             query_sql_checker_tool,
         ]
+    

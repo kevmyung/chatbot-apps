@@ -3,7 +3,7 @@ import random
 import os
 from typing import Dict, Tuple, List, Union
 from langchain_community.callbacks.streamlit import StreamlitCallbackHandler
-from libs.db_utils import DatabaseClient
+from libs.db_utils import DatabaseClient, find_sample_queries
 from libs.config import load_model_config, load_language_config
 from libs.models import ChatModel
 from libs.opensearch import OpenSearchClient, get_opensearch_retriever
@@ -111,21 +111,6 @@ def render_sidebar() -> Tuple[str, Dict, Dict, Dict]:
 
     return model_info, model_kwargs, database_config
 
-def find_sample_queries(os_client, prompt):
-    examples = ""
-    docs = os_client.vector_store.similarity_search(
-        query=prompt, 
-        vector_field="input_v", 
-        text_field="input",
-        score_threshold=0.3
-    )
-    for doc in docs:
-        input_text = doc.metadata.get('input', None)
-        query = doc.metadata.get('query', None)
-        if input_text and query:
-            examples += f"Question: {input_text}\n"
-            examples += f"Answer: {query}\n\n"
-    return examples
 
 def main() -> None:
     model_info, model_kwargs, database_config = render_sidebar()
@@ -145,12 +130,13 @@ def main() -> None:
     prompt = st.chat_input(placeholder=lang_config['example_msg'])
 
     if prompt:        
+        st.session_state.messages.append({"role": "user", "content": prompt})         
+        st.chat_message("user").write(prompt)
+
         db_client = DatabaseClient(chat_model.llm, database_config)
         qa_examples = ""
         if enable_rag_query:
             qa_examples = find_sample_queries(os_client, prompt)
-        st.session_state.messages.append({"role": "user", "content": prompt})         
-        st.chat_message("user").write(prompt)
         
         with st.chat_message("assistant"):
             callback = StreamlitCallbackHandler(st.container())

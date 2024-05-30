@@ -145,7 +145,7 @@ def sample_query_indexing(os_client, lang_config):
         with st.spinner("Now processing..."):
             if os_client.is_index_present:
                 os_client.delete_index()
-                os_client.create_index() 
+            os_client.create_index() 
 
             with open(rag_query_file, 'r') as file:
                 bulk_data = file.read()
