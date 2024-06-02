@@ -28,7 +28,7 @@ languages:
     example_msg: "Tell me the top 10 countries by revenue in 2023."
     rag_query: "RAG for sample queries"
     rag_query_file: "Sample Query File Path"
-    process_query: "Process it"
+    process_file: "Process"
     bulk_index_message: "Processing completed."
   Korean:
     new_chat: "채팅 초기화"
@@ -51,5 +51,5 @@ languages:
     example_msg: "2023년 매출 상위 10개 국가를 알려줘"
     rag_query: "샘플 쿼리 RAG 활용"
     rag_query_file: "샘플 쿼리 파일 경로"
-    process_query: "처리하기"
+    process_file: "처리하기"
     bulk_index_message: "처리가 완료됐습니다."

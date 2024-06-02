@@ -1,5 +1,7 @@
 from typing import List, Union
+import json
 import base64
+import boto3
 from io import BytesIO
 from PIL import Image, UnidentifiedImageError
 from langchain_community.document_loaders import PyPDFLoader
@@ -140,8 +142,9 @@ def sample_query_indexing(os_client, lang_config):
     rag_query_file = st.text_input(lang_config['rag_query_file'], value="libs/example_queries.json")
     if not os.path.exists(rag_query_file):
         st.warning(lang_config['file_not_found'])
+        return
 
-    if st.sidebar.button(lang_config['process_query']):
+    if st.sidebar.button(lang_config['process_file'], key='query_file_process'):
         with st.spinner("Now processing..."):
             if os_client.is_index_present:
                 os_client.delete_index()
@@ -205,3 +208,70 @@ def reset_faiss_index() -> None:
 
 def faiss_reset_on_click() -> None:
     reset_faiss_index()
+
+
+def store_schema_description(dynamodb, schema_file, schema_table):
+    with open(schema_file, 'r') as file:
+        data = json.load(file)
+    
+    table = dynamodb.Table(schema_table)
+    seen_keys = set()
+    duplicates = [] 
+    with table.batch_writer() as batch:
+        for item in data:
+            for table_name, details in item.items():
+                if table_name in seen_keys:
+                    duplicates.append(table_name)
+                else:
+                    seen_keys.add(table_name)
+                    batch.put_item(Item={
+                        'TableName': table_name,
+                        'Description': details['table_desc'],
+                        'Columns': details['cols']
+                    })
+    if duplicates:
+        print(f"Duplicate tables found in schema file: {', '.join(duplicates)}")
+
+def process_schema_description(schema_file, region_name, lang_config):
+    if not os.path.exists(schema_file):
+        st.warning(lang_config['file_not_found'])
+        return
+
+    if st.sidebar.button(lang_config['process_file'], key='schema_file_process'):
+        with st.spinner("Now processing..."):
+            dynamodb = boto3.resource('dynamodb', region_name=region_name)
+            schema_table = 'SchemaDescriptions'
+            table = dynamodb.Table(schema_table)
+
+            try:
+                table.load()
+                table.delete()
+                table.wait_until_not_exists()
+                print(f"Table {schema_table} deleted.")
+            except dynamodb.meta.client.exceptions.ResourceNotFoundException:
+                print(f"Table {schema_table} does not exist, creating new table.")
+
+            table = dynamodb.create_table(
+                TableName=schema_table,
+                KeySchema=[
+                    {
+                        'AttributeName': 'TableName',
+                        'KeyType': 'HASH'  # Partition key
+                    }
+                ],
+                AttributeDefinitions=[
+                    {
+                        'AttributeName': 'TableName',
+                        'AttributeType': 'S'
+                    }
+                ],
+                BillingMode='PAY_PER_REQUEST' 
+            )
+            table.wait_until_exists()
+            print(f"Table {schema_table} created.")
+
+            store_schema_description(dynamodb, schema_file, schema_table)
+            return table
+
+
+

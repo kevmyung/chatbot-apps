@@ -142,7 +142,7 @@ def main() -> None:
     prompt = st.chat_input()
 
     if "os_client" not in st.session_state:
-        os_client = OpenSearchClient(emb = chat_model.emb, index_name=INDEX_NAME, mapping_name='mappings-rag')
+        os_client = OpenSearchClient(emb = chat_model.emb, index_name=INDEX_NAME, mapping_name='mappings-rag', vector="vector_field", text="text", output=["text"])
         st.session_state["os_client"] = os_client
     else:
         os_client = st.session_state["os_client"]
@@ -151,16 +151,15 @@ def main() -> None:
 
     is_vector_empty = st.session_state["vector_empty"]
     if prompt:
-        context_text = ""
-        if not is_vector_empty == True:
-            context_text = os_retriever._get_relevant_documents(query = prompt, ensemble = ensemble)
-
-        prompt_new = f"""Here's some context for you. Use the context only when it is relevant to the user's question. Deliver an answer to address the user's inqueries. \n<context>\n{context_text}</context>\n\n{prompt}\n\n"""
-
-        formatted_prompt = chat_model.format_prompt(prompt_new)
-        st.session_state.messages.append({"role": "user", "content": formatted_prompt})
         with st.chat_message("user"):
             st.markdown(prompt)
+        
+        context_text = ""
+        if not is_vector_empty:
+            context_text = os_retriever.invoke(prompt, ensemble=ensemble)
+        prompt_new = f"""Here's some context for you. Use the context only when it is relevant to the user's question. Deliver an answer to address the user's inqueries. \n<context>\n{context_text}</context>\n\n{prompt}\n\n"""
+        formatted_prompt = chat_model.format_prompt(prompt_new)
+        st.session_state.messages.append({"role": "user", "content": formatted_prompt})
 
         st.session_state["langchain_messages"] = langchain_messages_format(
             st.session_state["langchain_messages"]

@@ -5,17 +5,21 @@ from typing import List, Optional, Dict, Tuple
 import streamlit as st
 from opensearchpy import OpenSearch, RequestsHttpConnection
 from langchain.schema import BaseRetriever, Document
+from langchain_core.callbacks import CallbackManagerForRetrieverRun
 from langchain_community.vectorstores import OpenSearchVectorSearch
 
 
 class OpenSearchClient:
-    def __init__(self, emb, index_name, mapping_name):
+    def __init__(self, emb, index_name, mapping_name, vector, text, output):
         config = self.load_opensearch_config()
         self.index_name = index_name
         self.emb = emb
         self.config = config
         self.endpoint = config['opensearch-auth']['domain_endpoint']
         self.http_auth = (config['opensearch-auth']['user_id'], config['opensearch-auth']['user_password'])
+        self.vector = vector
+        self.text = text
+        self.output = output
         self.mapping = {"settings": config['settings'], "mappings": config[mapping_name]}
         self.conn = OpenSearch(
             hosts=[{'host': self.endpoint.replace("https://", ""), 'port': 443}],
@@ -50,7 +54,7 @@ class OpenSearchClient:
 
 class OpenSearchHybridRetriever(BaseRetriever):
     os_client: OpenSearchClient
-    k: int = 5
+    k: int = 10
     verbose: bool = True
     filter: List[dict] = []
 
@@ -58,20 +62,21 @@ class OpenSearchHybridRetriever(BaseRetriever):
         super().__init__(os_client=os_client)
         self.os_client = os_client
     
-    def _get_relevant_documents(self, *, query: str, ensemble: List) -> List[Document]: 
+    def _get_relevant_documents(self, query: str, *, ensemble: List, run_manager: CallbackManagerForRetrieverRun) -> List[Document]:
         os_client = self.os_client
         search_result = retriever_utils.search_hybrid(
-            query = query,
-            k = self.k,
-            filter = self.filter,
-            index_name = os_client.index_name,
-            os_conn = os_client.conn,
-            emb = os_client.emb,
-            ensemble_weights = ensemble
+            query=query,
+            k=self.k,
+            filter=self.filter,
+            index_name=os_client.index_name,
+            os_conn=os_client.conn,
+            emb=os_client.emb,
+            ensemble_weights=ensemble,
+            vector_field=os_client.vector,
+            text_field=os_client.text,
+            output_field=os_client.output
         )
-
         return search_result
-
 
 class retriever_utils():
 
@@ -87,9 +92,6 @@ class retriever_utils():
     
     @classmethod 
     def search_semantic(cls, **kwargs):
-        if "vector_field" not in kwargs:
-            kwargs["vector_field"] = "vector_field"
-
         semantic_query = {
             "query": {
                 "bool": {
@@ -109,7 +111,6 @@ class retriever_utils():
             "size": kwargs["k"],
             #"min_score": 0.3
         }
-
         # get semantic search results
         search_results = lookup_opensearch_document(
             index_name=kwargs["index_name"],
@@ -118,27 +119,27 @@ class retriever_utils():
         )
 
         results = []
-        if search_results["hits"]["hits"]:
+        if search_results.get("hits", {}).get("hits", []):
             # normalize the scores
             search_results = cls.normalize_search_results(search_results)
             for res in search_results["hits"]["hits"]:
-                metadata = res["_source"]["metadata"]
+                if "metadata" in res["_source"]:
+                    metadata = res["_source"]["metadata"]
+                else:
+                    metadata = {}
                 metadata["id"] = res["_id"]
 
                 # extract the text contents
+                page_content = " ".join([res["_source"].get(field, "") for field in kwargs["output_field"]])
                 doc = Document(
-                    page_content=res["_source"]["text"],
+                    page_content=page_content,
                     metadata=metadata
                 )
                 results.append((doc, res["_score"]))
-
         return results
 
     @classmethod
     def search_lexical(cls, **kwargs):
-        if "text_field" not in kwargs:
-            kwargs["text_field"] = "text"
-
         lexical_query = {
             "query": {
                 "bool": {
@@ -166,20 +167,23 @@ class retriever_utils():
         )
 
         results = []
-        if search_results["hits"]["hits"]:
+        if search_results.get("hits", {}).get("hits", []):
             # normalize the scores
             search_results = cls.normalize_search_results(search_results)
             for res in search_results["hits"]["hits"]:
-                metadata = res["_source"]["metadata"]
+                if "metadata" in res["_source"]:
+                    metadata = res["_source"]["metadata"]
+                else:
+                    metadata = {}
                 metadata["id"] = res["_id"]
 
                 # extract the text contents
+                page_content = " ".join([res["_source"].get(field, "") for field in kwargs["output_field"]])
                 doc = Document(
-                    page_content=res["_source"]["text"],
+                    page_content=page_content,
                     metadata=metadata
                 )
                 results.append((doc, res["_score"]))
-
         return results
 
     @classmethod
@@ -189,14 +193,17 @@ class retriever_utils():
         assert "emb" in kwargs, "Check your emb"
         assert "index_name" in kwargs, "Check your index_name"
         assert "os_conn" in kwargs, "Check your OpenSearch Connection"
-        
+
         search_filter = deepcopy(kwargs.get("filter", []))
+
         similar_docs_semantic = cls.search_semantic(
                 index_name=kwargs["index_name"],
                 os_conn=kwargs["os_conn"],
                 emb=kwargs["emb"],
                 query=kwargs["query"],
                 k=kwargs.get("k", 5),
+                vector_field=kwargs["vector_field"],
+                output_field=kwargs["output_field"],
                 boolean_filter=search_filter,
             )
 
@@ -205,12 +212,14 @@ class retriever_utils():
                 os_conn=kwargs["os_conn"],
                 query=kwargs["query"],
                 k=kwargs.get("k", 5),
+                text_field=kwargs["text_field"],
+                output_field=kwargs["output_field"],
                 minimum_should_match=kwargs.get("minimum_should_match", 1),
                 filter=search_filter,
             )
         
-        # print("semantic_docs:", similar_docs_semantic)
-        # print("lexical_docs:", similar_docs_lexical)
+        #print("semantic_docs:", similar_docs_semantic)
+        #print("lexical_docs:", similar_docs_lexical)
 
         similar_docs = retriever_utils.get_ensemble_results(
             doc_lists=[similar_docs_semantic, similar_docs_lexical],

@@ -1,9 +1,12 @@
 import json
 from langchain.prompts.prompt import PromptTemplate
+from langchain.prompts import ChatPromptTemplate, MessagesPlaceholder
 
 _SQL_AGENT_PROMPT = """
 You are a helpful assistant tasked with answering user queries efficiently. 
 Based on the user's question, compose a {dialect} query if necessary, examine the results, and then provide an answer. 
+Please provide the final answer with SQL query you generated within the tags <final_answer></final_answer> when you are done.
+Additionally, provide the results of the executed query in CSV format.
 
 You have access to the following tools:
 <tools>
@@ -12,11 +15,7 @@ You have access to the following tools:
 To use a tool, use <tool></tool> and <tool_input></tool_input> tags. 
 You will then get back a response in the form <observation></observation>
 
-<restiction>
-Do not make any DML statements such as INSERT, UPDATE, DELETE, or DROP to the database.
-</restiction>
-
-<Example>
+<example>
 If you have a tool called 'sql_db_schema' that loads the table schema, to load the PlayListTrack table schema, respond:
 
 <tool>sql_db_schema</tool><tool_input>PlayListTrack</tool_input>
@@ -33,22 +32,16 @@ PlaylistId  TrackId
 1   3390
 */
 </observation>
-
-When done, respond with a final answer between <final_answer></final_answer>. For example:
-
-<final_answer>
-The "PlaylistTrack" table has two columns, "PlaylistId" and "TrackId", both of which are required and form a composite primary key. 
-</final_answer>
-</Example>
+</example>
 
 <chat_history>
 {chat_history}
 </chat_history>
 
 Refer to the sample queries for query composition if provided.
-<Samples>
+<samples>
 {samples}
-</Samples>
+</samples>
 
 Begin!
 
@@ -57,5 +50,17 @@ Question: {question}
 {agent_scratchpad}
 """
 
+_AGENT_SYS_PROMPT = """
+You are a helpful AI assistant, collaborating with other assistants.
+Use the provided tools to progress towards answering the question.
+If you are unable to fully answer, that's OK, another assistant with different tools will help where you left off. 
+Execute what you can to make progress and provide the detailed result if possible.
+After all execution, place your final answer within the <final_result></final_result> tags.
+You have access to the following tools: {tool_names}
+"""
+
 def get_sql_prompt():
     return PromptTemplate.from_template(_SQL_AGENT_PROMPT)
+
+def get_agent_sys_prompt():
+    return ChatPromptTemplate.from_messages([("system", _AGENT_SYS_PROMPT), MessagesPlaceholder(variable_name="messages")])
