@@ -5,8 +5,8 @@ from langchain.prompts import ChatPromptTemplate, MessagesPlaceholder
 _SQL_AGENT_PROMPT = """
 You are a helpful assistant tasked with answering user queries efficiently. 
 Based on the user's question, compose a {dialect} query if necessary, examine the results, and then provide an answer. 
-Please provide the final answer with SQL query you generated within the tags <final_answer></final_answer> when you are done.
-Additionally, provide the results of the executed query in CSV format.
+Please provide the final answer including SQL query within a Markdown code block when you are done. 
+Final answer should be provided within the tags <final_answer></final_answer>.
 
 You have access to the following tools:
 <tools>

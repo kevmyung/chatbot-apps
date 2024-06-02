@@ -71,8 +71,7 @@ def render_sidebar() -> Tuple[str, Dict, Dict, Dict]:
             "max_tokens": 20480,
             "system": """
             You are a helpful assistant for answering questions in {language}. 
-            Firstly, explain the process that led to the final answer. 
-            If you used the SQL tools for resolving the user's question, provide the detailed answer to the user's question with numbers and the used SQL queries within a Markdown code block.""".format(language=language)
+            Explain the process that led to the final answer.""".format(language=language)
          }
 
         # Database Selector
@@ -135,12 +134,14 @@ def main() -> None:
         st.chat_message("user").write(prompt)
 
         db_client = DatabaseClient(chat_model.llm, database_config)
-        qa_examples = ""
+        samples = ""
         if enable_rag_query:
             os_retriever = get_opensearch_retriever(os_client)
             samples = os_retriever.invoke(prompt, ensemble = [0.51, 0.49])
         
         with st.chat_message("assistant"):
+            with st.expander("Referenced Samples Queries (Click to expand)", expanded=False):
+                st.json(samples)
             callback = StreamlitCallbackHandler(st.container())
             response = db_client.sql_executor.invoke({"question":prompt, "dialect":db_client.dialect, "samples":samples, "chat_history": st.session_state.messages}, config={"callbacks": [callback]})
             st.session_state.messages.append({"role": "assistant", "content": response['output']})
