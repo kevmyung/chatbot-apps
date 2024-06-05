@@ -61,7 +61,7 @@ def load_table_descriptions(schema_table):
     return table_descriptions
 
 
-def get_table_description(table_name, schema_table):
+def get_column_description(table_name, schema_table):
     table = schema_db.Table(schema_table)
     response = table.get_item(Key={'TableName': table_name})
     if 'Item' in response:
@@ -160,7 +160,7 @@ class CustomInfoSQLDatabaseTool(InfoSQLDatabaseTool):
 
         table_details = {}
         for table in tables:
-            table_desc = get_table_description(table, self.schema_table)
+            table_desc = get_column_description(table, self.schema_table)
             if table_desc:
                 table_details[table] = {
                     "table": table,

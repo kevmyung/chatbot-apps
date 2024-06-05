@@ -1,4 +1,5 @@
 import os
+import json
 import yaml
 from copy import deepcopy
 from typing import List, Optional, Dict, Tuple
@@ -178,7 +179,7 @@ class retriever_utils():
                 metadata["id"] = res["_id"]
 
                 # extract the text contents
-                page_content = " ".join([res["_source"].get(field, "") for field in kwargs["output_field"]])
+                page_content = json.dumps({field: res["_source"].get(field, "") for field in kwargs["output_field"]})
                 doc = Document(
                     page_content=page_content,
                     metadata=metadata

@@ -1,6 +1,5 @@
 import streamlit as st
-import random
-import os
+import json
 from typing import Dict, Tuple, List, Union
 from langchain_community.callbacks.streamlit import StreamlitCallbackHandler
 from libs.db_utils import DatabaseClient
@@ -33,6 +32,19 @@ def handle_language_change():
 def new_chat() -> None:
     st.session_state["messages"] = [INIT_MESSAGE]
     st.session_state["langchain_messages"] = []
+
+def print_samples(documents):
+    for doc in documents:
+        try:
+            page_content_dict = json.loads(doc.page_content)
+            for key, value in page_content_dict.items():
+                if key == 'query':
+                    st.markdown(f"```\n{value}\n```")
+                else:
+                    st.markdown(f"{value}")
+            st.markdown("---")
+        except json.JSONDecodeError:
+            st.text("Invalid page_content format")
 
 def render_sidebar() -> Tuple[str, Dict, Dict, Dict]:
     st.sidebar.button("New Chat", on_click=new_chat, type="primary")
@@ -141,7 +153,7 @@ def main() -> None:
         
         with st.chat_message("assistant"):
             with st.expander("Referenced Samples Queries (Click to expand)", expanded=False):
-                st.json(samples)
+                print_samples(samples)
             callback = StreamlitCallbackHandler(st.container())
             response = db_client.sql_executor.invoke({"question":prompt, "dialect":db_client.dialect, "samples":samples, "chat_history": st.session_state.messages}, config={"callbacks": [callback]})
             st.session_state.messages.append({"role": "assistant", "content": response['output']})
