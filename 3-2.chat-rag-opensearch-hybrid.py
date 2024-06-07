@@ -1,5 +1,6 @@
 import streamlit as st
 import random
+import json
 from typing import Dict, Tuple, List, Union
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain.chains import ConversationChain
@@ -110,13 +111,27 @@ def render_sidebar() -> Tuple[Dict, Dict, List[st.runtime.uploaded_file_manager.
 
     return model_info, model_kwargs, uploaded_files, ensemble
 
-
 def init_session_state():
     if "messages" not in st.session_state:
         st.session_state["messages"] = [INIT_MESSAGE]
 
     if "vector_empty" not in st.session_state:
         st.session_state["vector_empty"] = True
+
+def print_context(documents: List[dict]) -> None:
+    for doc in documents:
+        try:
+            page_content_dict = json.loads(doc.page_content)
+            text = page_content_dict.get('text', '')
+            
+            source = doc.metadata.get('source', 'Unknown source')
+            page = doc.metadata.get('page', 'Unknown page')
+
+            st.markdown(f"Text:\n{text}\n")
+            st.markdown(f"Source: {source}, Page: {page}")
+            st.markdown('-' * 80)
+        except json.JSONDecodeError:
+            st.text("Invalid page_content format")
 
 def main() -> None:
     #init_session_state()
@@ -167,6 +182,8 @@ def main() -> None:
 
         if st.session_state["messages"][-1]["role"] != "assistant":
             with st.chat_message("assistant"):
+                with st.expander("Retrieved Contexts (Click to expand)", expanded=False):
+                    print_context(context_text)
                 response = generate_response(
                     chain, [{"role": "user", "content": formatted_prompt}]
                 )
