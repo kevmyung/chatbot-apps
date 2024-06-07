@@ -90,6 +90,7 @@ def display_chat_messages(
             if message["role"] == "assistant":
                 display_assistant_message(message["content"])
 
+
 def display_user_message(message_content: Union[str, List[dict]]) -> None:
     if isinstance(message_content, str):
         message_text = message_content

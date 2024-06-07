@@ -50,8 +50,8 @@ class OpenSearchClient:
         self.conn.indices.create(self.index_name, body=self.mapping)
 
     def delete_index(self):
-        self.conn.indices.delete(self.index_name)
-
+        if self.is_index_present():
+            self.conn.indices.delete(self.index_name)
 
 class OpenSearchHybridRetriever(BaseRetriever):
     os_client: OpenSearchClient
@@ -131,7 +131,7 @@ class retriever_utils():
                 metadata["id"] = res["_id"]
 
                 # extract the text contents
-                page_content = " ".join([res["_source"].get(field, "") for field in kwargs["output_field"]])
+                page_content = json.dumps({field: res["_source"].get(field, "") for field in kwargs["output_field"]})
                 doc = Document(
                     page_content=page_content,
                     metadata=metadata
@@ -196,7 +196,6 @@ class retriever_utils():
         assert "os_conn" in kwargs, "Check your OpenSearch Connection"
 
         search_filter = deepcopy(kwargs.get("filter", []))
-
         similar_docs_semantic = cls.search_semantic(
                 index_name=kwargs["index_name"],
                 os_conn=kwargs["os_conn"],
@@ -207,6 +206,7 @@ class retriever_utils():
                 output_field=kwargs["output_field"],
                 boolean_filter=search_filter,
             )
+        # print("semantic_docs:", similar_docs_semantic)
 
         similar_docs_lexical = cls.search_lexical(
                 index_name=kwargs["index_name"],
@@ -218,9 +218,7 @@ class retriever_utils():
                 minimum_should_match=kwargs.get("minimum_should_match", 1),
                 filter=search_filter,
             )
-        
-        #print("semantic_docs:", similar_docs_semantic)
-        #print("lexical_docs:", similar_docs_lexical)
+        # print("lexical_docs:", similar_docs_lexical)
 
         similar_docs = retriever_utils.get_ensemble_results(
             doc_lists=[similar_docs_semantic, similar_docs_lexical],
