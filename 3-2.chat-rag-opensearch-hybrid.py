@@ -180,15 +180,16 @@ def main() -> None:
             st.session_state["langchain_messages"]
         )
 
-        if st.session_state["messages"][-1]["role"] != "assistant":
+        assistant_placeholder = st.empty()
+        with assistant_placeholder.container():
             with st.chat_message("assistant"):
                 with st.expander("Retrieved Contexts (Click to expand)", expanded=False):
                     print_context(context_text)
                 response = generate_response(
                     chain, [{"role": "user", "content": formatted_prompt}]
                 )
-            message = {"role": "assistant", "content": response}
-            st.session_state.messages.append(message)
+                message = {"role": "assistant", "content": response}
+                st.session_state.messages.append(message)
 
 if __name__ == "__main__":
     main()

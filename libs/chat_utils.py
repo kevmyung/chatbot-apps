@@ -1,4 +1,5 @@
 from typing import List, Union
+import json
 from PIL import Image, UnidentifiedImageError
 from langchain_core.messages import AIMessage, HumanMessage
 from langchain.callbacks.base import BaseCallbackHandler
@@ -12,7 +13,32 @@ class StreamHandler(BaseCallbackHandler):
 
     def on_llm_new_token(self, token: str, **kwargs) -> None:
         self.text += token
-        self.container.markdown(self.text)
+        self.placeholder.markdown(self.text) 
+
+class ToolStreamHandler(BaseCallbackHandler):
+    def __init__(self, container, initial_text=""):
+        self.container = container
+        self.text = initial_text
+        self.placeholder = self.container.empty()
+
+    def on_llm_new_token(self, token: str, **kwargs) -> None:
+        self.text += token
+        self.placeholder.markdown(self.text)
+        
+    def on_llm_new_result(self, token: str, **kwargs) -> None:
+        try:
+            parsed_token = json.loads(token)
+            formatted_token = json.dumps(parsed_token, indent=2, ensure_ascii=False)
+            self.text += "\n\n```json\n" + formatted_token + "\n```\n\n"
+        except json.JSONDecodeError:
+            if token.strip().upper().startswith("SELECT"):
+                self.text += "\n\n```sql\n" + token + "\n```\n\n"
+            elif token.strip().upper().startswith("COUNTRY,TOTALREVENUE"):
+                self.text += "\n\n```\n" + token + "\n```\n\n"
+            else:
+                self.text += "\n\n" + token + "\n\n"
+        
+        self.placeholder.markdown(self.text)
 
 class PrintRetrievalHandler(BaseCallbackHandler):
     def __init__(self, container):
@@ -120,3 +146,8 @@ def langchain_messages_format(messages: List[Union["AIMessage", "HumanMessage"]]
                     message = HumanMessage(message.content[0]["content"])
                 messages[i] = message
     return messages
+
+
+def get_prompt_with_history(prompt, history):
+    new_prompt_template = "<background>{history}</background> Question: {prompt}"
+    return new_prompt_template.format(history=history, prompt=prompt)

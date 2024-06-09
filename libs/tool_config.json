@@ -1,0 +1,94 @@
+{
+    "tools": [
+        {
+            "toolSpec": {
+                "name": "list_tables",
+                "description": "Use this tool to ask if there are any tables available to reference for answering the user's question. This tool identifies the names of these tables and provide a brief description of each.",
+                "inputSchema": {
+                    "json": {
+                        "type": "object",
+                        "properties": {
+                            "input": {
+                                "type": "string",
+                                "description": "Empty string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        {
+            "toolSpec": {
+                "name": "desc_columns",
+                "description": "Provide the input as an list of table names. Output is the description about the DB schemas and sample rows for those tables. Use this tool before generating a query. Be sure that the tables actually exist by using 'list_tables' tool first!",
+                "inputSchema": {
+                    "json": {
+                        "type": "object",
+                        "properties": {
+                            "tables": {
+                                "type": "array",
+                                "items": {
+                                    "type": "string"
+                                },
+                                "description": "List of table names for which you want to get column descriptions. Example: ['table1', 'table2', ...]."
+                            }
+                        },
+                        "required": [
+                            "tables"
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "toolSpec": {
+                "name": "query_checker",
+                "description": "Use an LLM to check if a query is correct. Always use this tool before executing a query with sql_db_query!",
+                "inputSchema": {
+                    "json": {
+                        "type": "object",
+                        "properties": {
+                            "query": {
+                                "type": "string",
+                                "description": "The SQL query to check"
+                            },
+                            "dialect": {
+                                "type": "string",
+                                "description": "The SQL dialect of the database"
+                            }
+                        },
+                        "required": [
+                            "query",
+                            "dialect"
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "toolSpec": {
+                "name": "query_executor",
+                "description": "Execute a SQL query against the database, retrieve the result data, and provide the filename.. If the query is not correct, an error message will be returned. If an error is returned, rewrite the query, check the query, and try again. Only one statement can be executed at a time, so if multiple queries need to be executed, use this tool repeatedly.",
+                "inputSchema": {
+                    "json": {
+                        "type": "object",
+                        "properties": {
+                            "query": {
+                                "type": "string",
+                                "description": "The SQL query to execute"
+                            },
+                            "output_columns": {
+                                "type": "array",
+                                "descriptions": "The column names expected in the output"
+                            }
+                        },
+                        "required": [
+                            "query",
+                            "output_columns"
+                        ]
+                    }
+                }
+            }
+        }
+    ]
+}

@@ -70,7 +70,20 @@ streamlit run 3-2.chat-rag-opensearch-hybrid.py
 streamlit run 4.chat-sql-agent.py
 ```
 ![Chat SQL Agent](./images/4.chat-sql-agent.png)
-- 사용자의 자연어 질문을 Agent 기반으로 SQL 쿼리 변환/실행
+- Langchain XML Agent 기반으로 사용자의 자연어 요청을 SQL로 변환/실행
 - 샘플 데이터베이스([Chinook DB](https://github.com/lerocha/chinook-database))를 활용하거나, 데이터베이스 URI 입력
-- DB 스키마(테이블/컬럼)에 대한 상세 Description 참고 로직 : DynamoDB 활용
+- DB 스키마(테이블/컬럼)에 대한 상세 Description 참고 : OpenSearch 활용
 - 샘플 쿼리의 RAG 패턴 참조 기능 : OpenSearch Hybrid Search 활용
+
+### 5. **Chat SQL Tools**
+```
+streamlit run 5.chat-sql-tools.py
+```
+![Chat SQL Agent](./images/4.chat-sql-agent.png)
+- Bedrock Tool Use 기반으로 사용자의 자연어 요청을 SQL로 변환/실행
+- 샘플 데이터베이스([Chinook DB](https://github.com/lerocha/chinook-database))를 활용하거나, 데이터베이스 URI 입력
+- DB 스키마(테이블/컬럼)에 대한 상세 Description 참고 : OpenSearch 활용
+- 샘플 쿼리의 RAG 패턴 참조 기능 : OpenSearch Hybrid Search 활용
+- Query Cross-Validation with Llama3
+- 쿼리 실행 내역을 CSV 파일로 저장
+- Python REPL을 활용한 차트 시각화 (진행 중)

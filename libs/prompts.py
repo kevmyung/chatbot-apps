@@ -1,4 +1,5 @@
 import json
+from langchain.prompts import SystemMessagePromptTemplate, HumanMessagePromptTemplate
 from langchain.prompts.prompt import PromptTemplate
 from langchain.prompts import ChatPromptTemplate, MessagesPlaceholder
 
@@ -50,17 +51,22 @@ Question: {question}
 {agent_scratchpad}
 """
 
-_AGENT_SYS_PROMPT = """
-You are a helpful AI assistant, collaborating with other assistants.
-Use the provided tools to progress towards answering the question.
-If you are unable to fully answer, that's OK, another assistant with different tools will help where you left off. 
-Execute what you can to make progress and provide the detailed result if possible.
-After all execution, place your final answer within the <final_result></final_result> tags.
-You have access to the following tools: {tool_names}
+_SQL_AGENT_SYS_PROMPT = """
+You are a helpful assistant tasked with efficiently answering user queries.
+Utilize the provided tools to progress towards answering the question.
+Based on the user's question, compose a SQLite query if necessary, examine the results, and then provide an answer.
+Please provide your final answer in {language}.
+
+Make sure to show the below in your final answer:
+1. SQL query (Markdown Codeblock)
+2. Dataframe (Table in Codeblock)
+3. Result Filename (e.g. "\nResult File: './result_files/query_result_....csv'")
+4. Answer to the user's question (Text)
 """
 
 def get_sql_prompt():
     return PromptTemplate.from_template(_SQL_AGENT_PROMPT)
 
-def get_agent_sys_prompt():
-    return ChatPromptTemplate.from_messages([("system", _AGENT_SYS_PROMPT), MessagesPlaceholder(variable_name="messages")])
+def get_agent_sys_prompt(language):
+    return [{"text":_SQL_AGENT_SYS_PROMPT.format(language=language)}]
+

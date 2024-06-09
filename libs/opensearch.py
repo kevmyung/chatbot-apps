@@ -8,7 +8,7 @@ from opensearchpy import OpenSearch, RequestsHttpConnection
 from langchain.schema import BaseRetriever, Document
 from langchain_core.callbacks import CallbackManagerForRetrieverRun
 from langchain_community.vectorstores import OpenSearchVectorSearch
-
+from .file_utils import sample_query_indexing, schema_desc_indexing
 
 class OpenSearchClient:
     def __init__(self, emb, index_name, mapping_name, vector, text, output):
@@ -55,7 +55,7 @@ class OpenSearchClient:
 
 class OpenSearchHybridRetriever(BaseRetriever):
     os_client: OpenSearchClient
-    k: int = 10
+    k: int = 5
     verbose: bool = True
     filter: List[dict] = []
 
@@ -262,3 +262,46 @@ def lookup_opensearch_document(index_name, os_conn, query):
         body=query
     )
     return response
+
+
+def initialize_os_client(enable_flag: bool, client_params: Dict, indexing_function, lang_config: Dict):
+    if enable_flag:
+        client = OpenSearchClient(**client_params)
+        indexing_function(client, lang_config)
+    else:
+        client = ""
+    return client
+
+def init_opensearch(emb_model, lang_config):
+    with st.sidebar:
+        enable_rag_query = st.sidebar.checkbox(lang_config['rag_query'], value=False)
+        sql_os_client = initialize_os_client(
+            enable_rag_query,
+            {
+                "emb": emb_model,
+                "index_name": 'example_queries',
+                "mapping_name": 'mappings-sql',
+                "vector": "input_v",
+                "text": "input",
+                "output": ["input", "query"]
+            },
+            sample_query_indexing,
+            lang_config
+        )
+
+        enable_schema_desc = st.sidebar.checkbox(lang_config['schema_desc'], value=False)
+        schema_os_client = initialize_os_client(
+            enable_schema_desc,
+            {
+                "emb": emb_model,
+                "index_name": 'schema_descriptions',
+                "mapping_name": 'mappings-schema',
+                "vector": "col_desc_v",
+                "text": "col_desc",
+                "output": ["col", "col_desc"]
+            },
+            schema_desc_indexing,
+            lang_config
+        )
+
+    return sql_os_client, schema_os_client

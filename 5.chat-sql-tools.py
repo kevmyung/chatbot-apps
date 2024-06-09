@@ -2,11 +2,11 @@ import streamlit as st
 import json
 from typing import Dict, Tuple, List, Union
 from langchain_community.callbacks.streamlit import StreamlitCallbackHandler
-from libs.db_utils import DatabaseClient
+from libs.db_utils import DatabaseClient_v2
 from libs.config import load_model_config, load_language_config
 from libs.models import ChatModel
 from libs.opensearch import init_opensearch
-from libs.chat_utils import display_chat_messages
+from libs.chat_utils import display_chat_messages, get_prompt_with_history, ToolStreamHandler
 
 st.set_page_config(page_title='Bedrock AI Chatbot', page_icon="🤖", layout="wide")
 st.title("🤖 Bedrock AI Chatbot")
@@ -57,10 +57,7 @@ def render_sidebar() -> Tuple[Dict, Dict, Dict]:
         "temperature": 0.0,
         "top_p": 1.0,
         "top_k": 200,
-        "max_tokens": 20480,
-        "system": f"""
-        You are a helpful assistant for answering questions in {language}. 
-        Explain the process that led to the final answer."""
+        "max_tokens": 20480
     }
 
     database_selection = st.sidebar.selectbox(
@@ -105,7 +102,7 @@ def main() -> None:
 
     if "messages" not in st.session_state:
         st.session_state.messages = [INIT_MESSAGE]
-            
+
     display_chat_messages([])
     prompt = st.chat_input(placeholder=lang_config['example_msg'])
 
@@ -113,18 +110,25 @@ def main() -> None:
         st.session_state.messages.append({"role": "user", "content": prompt})
         st.chat_message("user").write(prompt)
 
-        db_client = DatabaseClient(chat_model.llm, database_config, sql_os_client, schema_os_client)
+        db_client = DatabaseClient_v2(model_info, database_config, st.session_state['language_select'], sql_os_client, schema_os_client)
         samples = db_client.get_sample_queries(prompt)
-
+        
         assistant_placeholder = st.empty()
         with assistant_placeholder.container():
             with st.chat_message("assistant"):
                 with st.expander("Referenced Sample Queries (Click to expand)", expanded=False):
                     print_sql_samples(samples)
-                callback = StreamlitCallbackHandler(st.container())
-                response = db_client.sql_executor.invoke({"question": prompt, "dialect": db_client.dialect, "samples": samples, "chat_history": st.session_state.messages}, config={"callbacks": [callback]})
-                st.session_state.messages.append({"role": "assistant", "content": response['output']})
-                st.write(response['output'])
+
+                with st.expander("Scratchpad (Click to expand)", expanded=False):  
+                    response_placeholder = st.empty() 
+                    callback = ToolStreamHandler(response_placeholder)
+
+                chat_history = st.session_state.messages[-3:]
+                new_prompt = get_prompt_with_history(prompt, chat_history)
+                response = db_client.invoke(new_prompt, callback)
+                
+                st.session_state.messages.append({"role": "assistant", "content": response})
+                st.markdown(response)
 
 if __name__ == "__main__":
     main()

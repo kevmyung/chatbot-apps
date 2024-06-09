@@ -7,8 +7,6 @@ from PIL import Image, UnidentifiedImageError
 from langchain_community.document_loaders import PyPDFLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores import FAISS
-from .models import ChatModel
-from .opensearch import OpenSearchClient
 import os
 import tempfile
 import pdfplumber
@@ -95,9 +93,7 @@ def pdf_to_images(pdf_filepath):
         print(f"Failed to convert PDF to images: {e}")
 
 
-def faiss_preprocess_document(uploaded_files: List[st.runtime.uploaded_file_manager.UploadedFile], 
-                              chat_model: ChatModel, 
-                              upload_message: str) -> FAISS:
+def faiss_preprocess_document(uploaded_files: List[st.runtime.uploaded_file_manager.UploadedFile], chat_model, upload_message) -> FAISS:
     if uploaded_files:
         docs = []
         if not os.path.exists(FAISS_ORIGIN):
@@ -137,9 +133,7 @@ def faiss_preprocess_document(uploaded_files: List[st.runtime.uploaded_file_mana
             retriever = None
     return retriever    
 
-def opensearch_preprocess_document(uploaded_file: st.runtime.uploaded_file_manager.UploadedFile, 
-                                   os_client: OpenSearchClient, 
-                                   upload_message: str):
+def opensearch_preprocess_document(uploaded_file: st.runtime.uploaded_file_manager.UploadedFile, os_client, upload_message):
     if uploaded_file:
         if not os_client.is_index_present():
             os_client.create_index()
@@ -246,6 +240,7 @@ def schema_desc_indexing(os_client, lang_config):
                 schema_data = json.load(file)
 
             bulk_data = []
+            n=0
             for table in schema_data:
                 for table_name, table_info in table.items():
                     table_doc = {
@@ -255,7 +250,11 @@ def schema_desc_indexing(os_client, lang_config):
                     }
                     bulk_data.append({"index": {"_index": os_client.index_name, "_id": table_name}})
                     bulk_data.append(table_doc)
-
+                print("No", n)
+                print("table-name:", table_name)
+                print("table-name:", table_doc["table_desc"])
+                n += 1        
+            
             bulk_data_str = '\n'.join(json.dumps(item) for item in bulk_data) + '\n'
 
             response = os_client.conn.bulk(body=bulk_data_str)
@@ -264,40 +263,6 @@ def schema_desc_indexing(os_client, lang_config):
             else:
                 st.success("Success")
     
-
-            # dynamodb = boto3.resource('dynamodb', region_name=region_name)
-            # schema_table = 'SchemaDescriptions'
-            # table = dynamodb.Table(schema_table)
-
-            # try:
-            #     table.load()
-            #     table.delete()
-            #     table.wait_until_not_exists()
-            #     print(f"Table {schema_table} deleted.")
-            # except dynamodb.meta.client.exceptions.ResourceNotFoundException:
-            #     print(f"Table {schema_table} does not exist, creating new table.")
-
-            # table = dynamodb.create_table(
-            #     TableName=schema_table,
-            #     KeySchema=[
-            #         {
-            #             'AttributeName': 'TableName',
-            #             'KeyType': 'HASH'  # Partition key
-            #         }
-            #     ],
-            #     AttributeDefinitions=[
-            #         {
-            #             'AttributeName': 'TableName',
-            #             'AttributeType': 'S'
-            #         }
-            #     ],
-            #     BillingMode='PAY_PER_REQUEST' 
-            # )
-            # table.wait_until_exists()
-            # print(f"Table {schema_table} created.")
-
-            # store_schema_description(dynamodb, schema_file, schema_table)
-            # return table
 
 
 

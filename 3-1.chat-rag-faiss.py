@@ -9,7 +9,7 @@ from langchain_community.chat_message_histories import StreamlitChatMessageHisto
 
 from libs.config import load_model_config, load_language_config
 from libs.models import ChatModel
-from libs.chat_utils import StreamHandler, display_chat_messages, display_pdf_images, langchain_messages_format, PrintRetrievalHandler
+from libs.chat_utils import StreamHandler, display_chat_messages, display_pdf_images, langchain_messages_format
 from libs.file_utils import faiss_preprocess_document, faiss_reset_on_click
 
 st.set_page_config(page_title='Bedrock AI Chatbot', page_icon="🤖", layout="wide")
@@ -93,10 +93,10 @@ def render_sidebar() -> Tuple[Dict, Dict, List[st.runtime.uploaded_file_manager.
         )
 
         st.button(
-            lang_config['init_knowledge'],
+            lang_config['clean_knowledge'],
             on_click=faiss_reset_on_click
         )
-        st.session_state['init_kb_message'] = lang_config['init_kb_message']
+        st.session_state['clean_kb_message'] = lang_config['clean_kb_message']
 
     return model_info, model_kwargs, uploaded_files
 
@@ -123,33 +123,29 @@ def main() -> None:
     prompt = st.chat_input()
 
     retriever = faiss_preprocess_document(uploaded_files, chat_model, lang_config['upload_message'])
-
     if prompt:
         context_text = ""
         with st.chat_message("user"):
             st.markdown(prompt)
-        
-        if retriever is not None:
-            st.session_state['image_paths'] = []
-            retrieval_handler = PrintRetrievalHandler(st.container())
-            context_text = retriever.get_relevant_documents(prompt, callbacks=[retrieval_handler])
 
-        prompt_new = f"Here's some context for you. However, do not mention this context unless it is directly relevant to the user's question. It is essential to deliver an answer that precisely addresses the user's needs \n<context>\n{context_text}</context>\n\n{prompt}\n\n"
+            context_text = retriever.get_relevant_documents(prompt)
 
-        formatted_prompt = chat_model.format_prompt(prompt_new)
-        st.session_state.messages.append({"role": "user", "content": formatted_prompt})
-        
-        st.session_state["langchain_messages"] = langchain_messages_format(
-            st.session_state["langchain_messages"]
-        )
+            prompt_new = f"Here's some context for you. However, do not mention this context unless it is directly relevant to the user's question. It is essential to deliver an answer that precisely addresses the user's needs \n<context>\n{context_text}</context>\n\n{prompt}\n\n"
 
-        if st.session_state["messages"][-1]["role"] != "assistant":
-            with st.chat_message("assistant"):
-                response = generate_response(
-                    chain, [{"role": "user", "content": formatted_prompt}]
-                )
+            formatted_prompt = chat_model.format_prompt(prompt_new)
+            st.session_state.messages.append({"role": "user", "content": formatted_prompt})
+            
+            st.session_state["langchain_messages"] = langchain_messages_format(
+                st.session_state["langchain_messages"]
+            )
+
+        with st.chat_message("assistant"):
+            response = generate_response(
+                chain, [{"role": "user", "content": formatted_prompt}]
+            )
             message = {"role": "assistant", "content": response}
             st.session_state.messages.append(message)
+            
             if 'image_paths' in st.session_state:
                 for img in st.session_state['image_paths']:
                     display_pdf_images(img)
