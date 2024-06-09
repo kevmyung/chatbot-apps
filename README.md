@@ -80,7 +80,7 @@ streamlit run 4.chat-sql-agent.py
 streamlit run 5.chat-sql-tools.py
 ```
 ![Chat SQL Tools](./images/5.chat-sql-tools.png)
-- Bedrock Tool Use 기반으로 사용자의 자연어 요청을 SQL로 변환/실행
+- Amazon Bedrock [Tool Use](https://docs.aws.amazon.com/bedrock/latest/userguide/tool-use.html) 기반으로 사용자의 자연어 요청을 SQL로 변환/실행
 - 샘플 데이터베이스([Chinook DB](https://github.com/lerocha/chinook-database))를 활용하거나, 데이터베이스 URI 입력
 - DB 스키마(테이블/컬럼)에 대한 상세 Description 참고 : OpenSearch 활용
 - 샘플 쿼리의 RAG 패턴 참조 기능 : OpenSearch Hybrid Search 활용
