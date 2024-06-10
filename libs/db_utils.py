@@ -435,14 +435,6 @@ class DatabaseTool:
         except Exception as e:
             logging.error(f"Unexpected error: {e}")
             return {"error": "An unexpected error occurred. Please try again later."}
-        
-    def csv_visualizer(self, code: Annotated[str, "The python code to execute to generate your chart."]):
-        try:
-            result = self.repl.run(code)
-        except BaseException as e:
-            return f"Failed to execute. Error: {repr(e)}"
-        return f"Successfully executed:\n```python\n{code}\n```\nStdout: {result}"
-
 
     def tool_router(self, tool, callback):
         match tool['name']:
@@ -512,7 +504,7 @@ class DatabaseClient_v2:
         else:
             return ""
 
-    def stream_messages(self, messages, callback):
+    def stream_messages(self, messages, callback, tokens):
         sys_prompt = get_agent_sys_prompt(self.language)
         response = self.client.converse_stream(
             modelId=self.model,
@@ -552,13 +544,22 @@ class DatabaseClient_v2:
                     text = ''
             elif 'messageStop' in chunk:
                 stop_reason = chunk['messageStop']['stopReason']
-
+            elif 'metadata' in chunk:
+                tokens['total_input_tokens'] += chunk['metadata']['usage']['inputTokens']
+                tokens['total_output_tokens'] += chunk['metadata']['usage']['outputTokens']
+        tokens['total_tokens'] = tokens['total_input_tokens'] + tokens['total_output_tokens']
         return stop_reason, message
 
     
     def invoke(self, prompt, callback):
+        tokens = {
+            'total_input_tokens': 0,
+            'total_output_tokens': 0,
+            'total_tokens': 0
+        }
+
         messages = [{"role": "user", "content": [{"text": prompt}]}]        
-        stop_reason, message = self.stream_messages(messages, callback)
+        stop_reason, message = self.stream_messages(messages, callback, tokens)
         messages.append(message)
 
         while stop_reason == "tool_use":
@@ -570,9 +571,20 @@ class DatabaseClient_v2:
                 message = self.db_tool.tool_router(tool_use, callback)
                 messages.append(message)
 
-            stop_reason, message = self.stream_messages(messages, callback)
+            stop_reason, message = self.stream_messages(messages, callback, tokens)
             messages.append(message)
 
         final_response = message['content'][0]['text']
+        return final_response, tokens
+    
 
-        return final_response 
+class InsightTool:
+    def __init__(self, filename):
+        self.csv_path = filename
+        
+    def csv_visualizer(self, code: Annotated[str, "The python code to execute to generate your chart."]):
+        try:
+            result = self.repl.run(code)
+        except BaseException as e:
+            return f"Failed to execute. Error: {repr(e)}"
+        return f"Successfully executed:\n```python\n{code}\n```\nStdout: {result}"

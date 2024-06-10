@@ -1,10 +1,9 @@
 import streamlit as st
 import json
 from typing import Dict, Tuple, List, Union
-from langchain_community.callbacks.streamlit import StreamlitCallbackHandler
 from libs.db_utils import DatabaseClient_v2
 from libs.config import load_model_config, load_language_config
-from libs.models import ChatModel
+from libs.models import ChatModel, calculate_cost_from_tokens
 from libs.opensearch import init_opensearch
 from libs.chat_utils import display_chat_messages, get_prompt_with_history, ToolStreamHandler
 
@@ -95,6 +94,25 @@ def print_sql_samples(documents: List[dict]) -> None:
         except json.JSONDecodeError:
             st.text("Invalid page_content format")
 
+def update_tokens_and_costs(tokens):
+    st.session_state.tokens['delta_input_tokens'] = tokens['total_input_tokens']
+    st.session_state.tokens['delta_output_tokens'] = tokens['total_output_tokens']
+    st.session_state.tokens['total_input_tokens'] += tokens['total_input_tokens']
+    st.session_state.tokens['total_output_tokens'] += tokens['total_output_tokens']
+    st.session_state.tokens['delta_total_tokens'] = tokens['total_tokens']
+    st.session_state.tokens['total_tokens'] += tokens['total_tokens']
+
+
+def calculate_and_display_costs(model_id):
+    input_cost, output_cost, total_cost = calculate_cost_from_tokens(st.session_state.tokens, model_id)
+
+    with st.sidebar:
+        st.header("Token Usage and Cost")
+        st.markdown(f"**Input Tokens:** <span style='color:#555555;'>{st.session_state.tokens['total_input_tokens']}</span> <span style='color:green;'>(+{st.session_state.tokens['delta_input_tokens']})</span> (${input_cost:.2f})", unsafe_allow_html=True)
+        st.markdown(f"**Output Tokens:** <span style='color:#555555;'>{st.session_state.tokens['total_output_tokens']}</span> <span style='color:green;'>(+{st.session_state.tokens['delta_output_tokens']})</span> (${output_cost:.2f})", unsafe_allow_html=True)
+        st.markdown(f"**Total Tokens:** <span style='color:#555555;'>{st.session_state.tokens['total_tokens']}</span> <span style='color:green;'>(+{st.session_state.tokens['delta_total_tokens']})</span> (${total_cost:.2f})", unsafe_allow_html=True)
+
+
 def main() -> None:
     model_info, model_kwargs, database_config = render_sidebar()
     chat_model = ChatModel(model_info, model_kwargs)
@@ -102,6 +120,15 @@ def main() -> None:
 
     if "messages" not in st.session_state:
         st.session_state.messages = [INIT_MESSAGE]
+    if "tokens" not in st.session_state:
+        st.session_state.tokens = {
+            'total_input_tokens': 0,
+            'total_output_tokens': 0,
+            'total_tokens': 0,
+            'delta_input_tokens': 0,
+            'delta_output_tokens': 0,
+            'delta_total_tokens': 0
+        }
 
     display_chat_messages([])
     prompt = st.chat_input(placeholder=lang_config['example_msg'])
@@ -125,10 +152,14 @@ def main() -> None:
 
                 chat_history = st.session_state.messages[-3:]
                 new_prompt = get_prompt_with_history(prompt, chat_history)
-                response = db_client.invoke(new_prompt, callback)
+                response, tokens = db_client.invoke(new_prompt, callback)
                 
+                update_tokens_and_costs(tokens)
                 st.session_state.messages.append({"role": "assistant", "content": response})
                 st.markdown(response)
+
+    calculate_and_display_costs(model_info['model_id'])
+
 
 if __name__ == "__main__":
     main()

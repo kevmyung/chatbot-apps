@@ -19,3 +19,25 @@ class ChatModel:
             return [prompt_text]
         else:
             raise ValueError(f"Unsupported input format for model: {self.model_id}")
+        
+def calculate_cost_from_tokens(tokens, model_id):
+    PRICING = {
+        "anthropic.claude-3-sonnet-20240229-v1:0": {
+            "input_rate": 0.003,
+            "output_rate": 0.015
+        },
+        "anthropic.claude-3-haiku-20240307-v1:0": {
+            "input_rate": 0.00025,
+            "output_rate": 0.00125
+        },
+    }
+    if model_id not in PRICING:
+        return 0.0, 0.0 
+    
+    input_cost = tokens['total_input_tokens'] / 1000 * PRICING[model_id]['input_rate']
+    output_cost = tokens['total_output_tokens'] / 1000 * PRICING[model_id]['output_rate']
+    total_cost = input_cost + output_cost
+
+    return input_cost, output_cost, total_cost
+
+
