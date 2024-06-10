@@ -2,6 +2,7 @@ langchain
 streamlit
 langchain_community
 langchain-aws
+langchain-experimental
 boto3>=1.34.116
 pdfplumber
 pypdf
