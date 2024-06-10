@@ -60,7 +60,9 @@ def render_sidebar() -> Tuple[Dict, Dict, Dict]:
         "max_tokens": 20480,
         "system": f"""
         You are a helpful assistant for answering questions in {language}. 
-        Explain the process that led to the final answer."""
+        Explain the process that led to the final answer. 
+        If the query is successfully written, execute the query.
+        Then, use the successfully retrieved data to provide an answer to the user's question."""
     }
 
     database_selection = st.sidebar.selectbox(

@@ -437,31 +437,36 @@ class DatabaseTool:
             return {"error": "An unexpected error occurred. Please try again later."}
 
     def tool_router(self, tool, callback):
-        match tool['name']:
-            case 'list_tables':
-                res = self.list_db_tables(tool['input']['input'])
-                tool_result = {
-                    "toolUseId": tool['toolUseId'],
-                    "content": [{"json": res}]
-                }
-            case 'desc_columns':
-                res = self.desc_table_columns(tool['input']['tables'])
-                tool_result = {
-                    "toolUseId": tool['toolUseId'],
-                    "content": [{"json": res}]
-                }
-            case 'query_checker':
-                res = self.query_checker(tool['input']['query'], tool['input']['dialect'])
-                tool_result = {
-                    "toolUseId": tool['toolUseId'],
-                    "content": [{"text": res}]
-                }
-            case 'query_executor':
-                res = self.query_executor(tool['input']['query'], tool['input']['output_columns'])
-                tool_result = {
-                    "toolUseId": tool['toolUseId'],
-                    "content": [{"json": res}]
-                }
+        if tool['name'] == 'list_tables':
+            res = self.list_db_tables(tool['input']['input'])
+            tool_result = {
+                "toolUseId": tool['toolUseId'],
+                "content": [{"json": res}]
+            }
+        elif tool['name'] == 'desc_columns':
+            res = self.desc_table_columns(tool['input']['tables'])
+            tool_result = {
+                "toolUseId": tool['toolUseId'],
+                "content": [{"json": res}]
+            }
+        elif tool['name'] == 'query_checker':
+            res = self.query_checker(tool['input']['query'], tool['input']['dialect'])
+            tool_result = {
+                "toolUseId": tool['toolUseId'],
+                "content": [{"text": res}]
+            }
+        elif tool['name'] == 'query_executor':
+            res = self.query_executor(tool['input']['query'], tool['input']['output_columns'])
+            tool_result = {
+                "toolUseId": tool['toolUseId'],
+                "content": [{"json": res}]
+            }
+        else:
+            # Handle the case where the tool name does not match any known tool
+            tool_result = {
+                "toolUseId": tool['toolUseId'],
+                "content": [{"text": "Unknown tool name"}]
+            }
                 
         callback.on_llm_new_result(json.dumps({
             "tool_name": tool['name'], 

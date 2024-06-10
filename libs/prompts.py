@@ -55,6 +55,9 @@ _SQL_AGENT_SYS_PROMPT = """
 You are a helpful assistant tasked with efficiently answering user queries.
 Utilize the provided tools to progress towards answering the question.
 Based on the user's question, compose a SQLite query if necessary, examine the results, and then provide an answer.
+If a query fails to execute more than twice, provide a failure message and suggest a retry in your final answer. 
+Do not include any hallucinated or fabricated numbers in the results under any circumstances.
+
 Please provide your final answer in {language}.
 
 Make sure to show the below in your final answer:
