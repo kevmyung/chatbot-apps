@@ -13,7 +13,7 @@ class StreamHandler(BaseCallbackHandler):
 
     def on_llm_new_token(self, token: str, **kwargs) -> None:
         self.text += token
-        self.placeholder.markdown(self.text) 
+        self.container.markdown(self.text)
 
 class ToolStreamHandler(BaseCallbackHandler):
     def __init__(self, container, initial_text=""):
