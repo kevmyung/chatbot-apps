@@ -1,0 +1,58 @@
+{
+    "tools": [
+        {
+            "toolSpec": {
+                "name": "prompt_refinement",
+                "description": "Use this tool to clarify and augment the prompt when user's question is too ambiguous or too complex to be used for Text-to-SQL tasks.",
+                "inputSchema": {
+                    "json": {
+                        "type": "object",
+                        "properties": {
+                            "input": {
+                                "type": "string",
+                                "description": "Empty string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        {
+            "toolSpec": {
+                "name": "query_generation",
+                "description": "Use this tool to generate the query to query the database to resolve the user's question. Ensure that the prompt is well-defined before using this tool. If the prompt is insufficient, use the 'prompt_refinement' tool first",
+                "inputSchema": {
+                    "json": {
+                        "type": "object",
+                        "properties": {
+                            "input": {
+                                "type": "string",
+                                "description": "Empty string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        {
+            "toolSpec": {
+                "name": "validate_and_run_queries",
+                "description": "Use this tool to execute the SQL queries after generating the queries by using 'query_generation' tool or referencing the sample queries. Only one statement can be executed at a time, so if multiple queries need to be executed, use this tool repeatedly",
+                "inputSchema": {
+                    "json": {
+                        "type": "object",
+                        "properties": {
+                            "generated_query": {
+                                "type": "string",
+                                "description": "The SQL query to execute. It should be formatted as \"SELECT ...;\""
+                            }
+                        },
+                        "required": [
+                            "generated_query"
+                        ]
+                    }
+                }
+            }
+        }
+    ]
+}

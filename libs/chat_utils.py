@@ -151,3 +151,27 @@ def langchain_messages_format(messages: List[Union["AIMessage", "HumanMessage"]]
 def get_prompt_with_history(prompt, history):
     new_prompt_template = "<background>{history}</background> Question: {prompt}"
     return new_prompt_template.format(history=history, prompt=prompt)
+
+def update_tokens_and_costs(tokens):
+    st.session_state.tokens['delta_input_tokens'] = tokens['total_input_tokens']
+    st.session_state.tokens['delta_output_tokens'] = tokens['total_output_tokens']
+    st.session_state.tokens['total_input_tokens'] += tokens['total_input_tokens']
+    st.session_state.tokens['total_output_tokens'] += tokens['total_output_tokens']
+    st.session_state.tokens['delta_total_tokens'] = tokens['total_tokens']
+    st.session_state.tokens['total_tokens'] += tokens['total_tokens']
+
+def init_tokens_and_costs() -> None:
+    st.session_state.tokens['delta_input_tokens'] = 0
+    st.session_state.tokens['delta_output_tokens'] = 0
+    st.session_state.tokens['total_input_tokens'] = 0
+    st.session_state.tokens['total_output_tokens'] = 0
+    st.session_state.tokens['delta_total_tokens'] = 0
+    st.session_state.tokens['total_tokens'] = 0
+
+def calculate_and_display_costs(input_cost, output_cost, total_cost):
+    with st.sidebar:
+        st.header("Token Usage and Cost")
+        st.markdown(f"**Input Tokens:** <span style='color:#555555;'>{st.session_state.tokens['total_input_tokens']}</span> <span style='color:green;'>(+{st.session_state.tokens['delta_input_tokens']})</span> (${input_cost:.2f})", unsafe_allow_html=True)
+        st.markdown(f"**Output Tokens:** <span style='color:#555555;'>{st.session_state.tokens['total_output_tokens']}</span> <span style='color:green;'>(+{st.session_state.tokens['delta_output_tokens']})</span> (${output_cost:.2f})", unsafe_allow_html=True)
+        st.markdown(f"**Total Tokens:** <span style='color:#555555;'>{st.session_state.tokens['total_tokens']}</span> <span style='color:green;'>(+{st.session_state.tokens['delta_total_tokens']})</span> (${total_cost:.2f})", unsafe_allow_html=True)
+    st.sidebar.button("Init Tokens", on_click=init_tokens_and_costs, type="primary")

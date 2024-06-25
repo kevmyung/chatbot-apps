@@ -205,7 +205,7 @@ def store_schema_description(dynamodb, schema_file, schema_table):
 
 
 def sample_query_indexing(os_client, lang_config):
-    rag_query_file = st.text_input(lang_config['rag_query_file'], value="libs/example_queries.json")
+    rag_query_file = st.text_input(lang_config['rag_query_file'], value="./db_metadata/example_queries.json")
     if not os.path.exists(rag_query_file):
         st.warning(lang_config['file_not_found'])
         return
@@ -226,7 +226,7 @@ def sample_query_indexing(os_client, lang_config):
 
 
 def schema_desc_indexing(os_client, lang_config):
-    schema_file = st.text_input(lang_config['schema_file'], value="libs/default-schema.json")               
+    schema_file = st.text_input(lang_config['schema_file'], value="./db_metadata/detailed_schema.json")               
     if not os.path.exists(schema_file):
         st.warning(lang_config['file_not_found'])
         return
@@ -236,24 +236,21 @@ def schema_desc_indexing(os_client, lang_config):
             os_client.delete_index()
             os_client.create_index() 
 
-            with open(schema_file, 'r') as file:
+            with open(schema_file, 'r', encoding='utf-8') as file:
                 schema_data = json.load(file)
 
             bulk_data = []
-            n=0
             for table in schema_data:
                 for table_name, table_info in table.items():
                     table_doc = {
                         "table_name": table_name,
                         "table_desc": table_info["table_desc"],
-                        "columns": [{"col_name": col["col"], "col_desc": col["col_desc"]} for col in table_info["cols"]]
+                        "columns": [{"col_name": col["col"], "col_desc": col["col_desc"]} for col in table_info["cols"]],
+                        "table_summary": table_info["table_summary"],
+                        "table_summary_v": table_info["table_summary_v"]
                     }
                     bulk_data.append({"index": {"_index": os_client.index_name, "_id": table_name}})
                     bulk_data.append(table_doc)
-                print("No", n)
-                print("table-name:", table_name)
-                print("table-name:", table_doc["table_desc"])
-                n += 1        
             
             bulk_data_str = '\n'.join(json.dumps(item) for item in bulk_data) + '\n'
 

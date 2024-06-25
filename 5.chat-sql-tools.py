@@ -1,11 +1,11 @@
 import streamlit as st
 import json
 from typing import Dict, Tuple, List, Union
-from libs.db_utils import DatabaseClient_v2
+from libs.db_utils import DB_Tool_Client
 from libs.config import load_model_config, load_language_config
 from libs.models import ChatModel, calculate_cost_from_tokens
 from libs.opensearch import init_opensearch
-from libs.chat_utils import display_chat_messages, get_prompt_with_history, ToolStreamHandler
+from libs.chat_utils import display_chat_messages, get_prompt_with_history, ToolStreamHandler, update_tokens_and_costs, calculate_and_display_costs
 
 st.set_page_config(page_title='Bedrock AI Chatbot', page_icon="🤖", layout="wide")
 st.title("🤖 Bedrock AI Chatbot")
@@ -81,37 +81,15 @@ def render_sidebar() -> Tuple[Dict, Dict, Dict]:
 
     return model_info, model_kwargs, database_config
 
-def print_sql_samples(documents: List[dict]) -> None:
-    for doc in documents:
-        try:
-            page_content_dict = json.loads(doc.page_content)
-            for key, value in page_content_dict.items():
-                if key == 'query':
-                    st.markdown(f"```\n{value}\n```")
-                else:
-                    st.markdown(f"{value}")
-            st.markdown('<div style="margin: 5px 0;"><hr style="border: none; border-top: 1px solid #ccc; margin: 0;" /></div>', unsafe_allow_html=True)
-        except json.JSONDecodeError:
-            st.text("Invalid page_content format")
-
-def update_tokens_and_costs(tokens):
-    st.session_state.tokens['delta_input_tokens'] = tokens['total_input_tokens']
-    st.session_state.tokens['delta_output_tokens'] = tokens['total_output_tokens']
-    st.session_state.tokens['total_input_tokens'] += tokens['total_input_tokens']
-    st.session_state.tokens['total_output_tokens'] += tokens['total_output_tokens']
-    st.session_state.tokens['delta_total_tokens'] = tokens['total_tokens']
-    st.session_state.tokens['total_tokens'] += tokens['total_tokens']
-
-
-def calculate_and_display_costs(model_id):
-    input_cost, output_cost, total_cost = calculate_cost_from_tokens(st.session_state.tokens, model_id)
-
-    with st.sidebar:
-        st.header("Token Usage and Cost")
-        st.markdown(f"**Input Tokens:** <span style='color:#555555;'>{st.session_state.tokens['total_input_tokens']}</span> <span style='color:green;'>(+{st.session_state.tokens['delta_input_tokens']})</span> (${input_cost:.2f})", unsafe_allow_html=True)
-        st.markdown(f"**Output Tokens:** <span style='color:#555555;'>{st.session_state.tokens['total_output_tokens']}</span> <span style='color:green;'>(+{st.session_state.tokens['delta_output_tokens']})</span> (${output_cost:.2f})", unsafe_allow_html=True)
-        st.markdown(f"**Total Tokens:** <span style='color:#555555;'>{st.session_state.tokens['total_tokens']}</span> <span style='color:green;'>(+{st.session_state.tokens['delta_total_tokens']})</span> (${total_cost:.2f})", unsafe_allow_html=True)
-
+def parse_conversation_history(messages):
+    history = ""
+    for message in messages:
+        role = message.get('role', 'unknown')
+        content = message.get('content', '')
+        if isinstance(content, list):
+            content = ' '.join([item.get('text', '') for item in content])
+        history += f"{role}: {content}\n"
+    return history
 
 def main() -> None:
     model_info, model_kwargs, database_config = render_sidebar()
@@ -136,29 +114,22 @@ def main() -> None:
     if prompt:
         st.session_state.messages.append({"role": "user", "content": prompt})
         st.chat_message("user").write(prompt)
-
-        db_client = DatabaseClient_v2(model_info, database_config, st.session_state['language_select'], sql_os_client, schema_os_client)
-        samples = db_client.get_sample_queries(prompt)
         
         assistant_placeholder = st.empty()
         with assistant_placeholder.container():
             with st.chat_message("assistant"):
-                with st.expander("Referenced Sample Queries (Click to expand)", expanded=False):
-                    print_sql_samples(samples)
-
-                with st.expander("Scratchpad (Click to expand)", expanded=False):  
-                    response_placeholder = st.empty() 
+                history = parse_conversation_history(st.session_state.messages[-3:])
+                db_client = DB_Tool_Client(model_info, database_config, st.session_state['language_select'], sql_os_client, schema_os_client, prompt, history)
+                with st.expander("Scratchpad (Click to expand)", expanded=True): 
+                    response_placeholder = st.empty()  
                     callback = ToolStreamHandler(response_placeholder)
-
-                chat_history = st.session_state.messages[-3:]
-                new_prompt = get_prompt_with_history(prompt, chat_history)
-                response, tokens = db_client.invoke(new_prompt, callback)
-                
+                    response, tokens = db_client.invoke(callback)
                 update_tokens_and_costs(tokens)
                 st.session_state.messages.append({"role": "assistant", "content": response})
-                st.markdown(response)
-
-    calculate_and_display_costs(model_info['model_id'])
+                st.markdown(response)                
+    
+    input_cost, output_cost, total_cost = calculate_cost_from_tokens(st.session_state.tokens, model_info['model_id'])
+    calculate_and_display_costs(input_cost, output_cost, total_cost)
 
 
 if __name__ == "__main__":

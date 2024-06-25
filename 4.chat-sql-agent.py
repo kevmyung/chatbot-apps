@@ -54,15 +54,19 @@ def render_sidebar() -> Tuple[Dict, Dict, Dict]:
     )
 
     model_kwargs = {
-        "temperature": 0.0,
+        "temperature": 0.1,
         "top_p": 1.0,
         "top_k": 200,
         "max_tokens": 20480,
         "system": f"""
-        You are a helpful assistant for answering questions in {language}. 
-        Explain the process that led to the final answer. 
-        If the query is successfully written, execute the query.
-        Then, use the successfully retrieved data to provide an answer to the user's question."""
+        You are a helpful assistant for answering questions in {language}. When a user asks a question that requires a database query, follow these steps:
+
+        1. Write the SQL query based on the user's request.
+        2. Use aliases according to the user's specifications.
+        3. Clearly format the query using code blocks for readability.
+        4. Execute the query.
+        5. If the query succeeds without error, use the retrieved data to provide a clear and concise answer to the user's question.
+        """
     }
 
     database_selection = st.sidebar.selectbox(

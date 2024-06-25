@@ -59,9 +59,10 @@ class OpenSearchHybridRetriever(BaseRetriever):
     verbose: bool = True
     filter: List[dict] = []
 
-    def __init__(self, os_client: OpenSearchClient):
+    def __init__(self, os_client: OpenSearchClient, k):
         super().__init__(os_client=os_client)
         self.os_client = os_client
+        self.k = k
     
     def _get_relevant_documents(self, query: str, *, ensemble: List, run_manager: CallbackManagerForRetrieverRun) -> List[Document]:
         os_client = self.os_client
@@ -249,7 +250,7 @@ class retriever_utils():
 
 def get_opensearch_retriever(os_client: OpenSearchClient):
     if "retriever" not in st.session_state:
-        retriever = OpenSearchHybridRetriever(os_client)
+        retriever = OpenSearchHybridRetriever(os_client, 5)
         st.session_state['retriever'] = retriever
     else:
         retriever = st.session_state['retriever']
@@ -274,7 +275,7 @@ def initialize_os_client(enable_flag: bool, client_params: Dict, indexing_functi
 
 def init_opensearch(emb_model, lang_config):
     with st.sidebar:
-        enable_rag_query = st.sidebar.checkbox(lang_config['rag_query'], value=False)
+        enable_rag_query = st.sidebar.checkbox(lang_config['rag_query'], value=True)
         sql_os_client = initialize_os_client(
             enable_rag_query,
             {
@@ -289,16 +290,16 @@ def init_opensearch(emb_model, lang_config):
             lang_config
         )
 
-        enable_schema_desc = st.sidebar.checkbox(lang_config['schema_desc'], value=False)
+        enable_schema_desc = st.sidebar.checkbox(lang_config['schema_desc'], value=True)
         schema_os_client = initialize_os_client(
             enable_schema_desc,
             {
                 "emb": emb_model,
                 "index_name": 'schema_descriptions',
-                "mapping_name": 'mappings-schema',
-                "vector": "col_desc_v",
-                "text": "col_desc",
-                "output": ["col", "col_desc"]
+                "mapping_name": 'mappings-detailed-schema',
+                "vector": "table_summary_v",
+                "text": "table_summary",
+                "output": ["table_name", "table_summary"]
             },
             schema_desc_indexing,
             lang_config
