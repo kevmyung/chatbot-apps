@@ -1,7 +1,4 @@
-import json
-from langchain.prompts import SystemMessagePromptTemplate, HumanMessagePromptTemplate
 from langchain.prompts.prompt import PromptTemplate
-from langchain.prompts import ChatPromptTemplate, MessagesPlaceholder
 
 _SQL_AGENT_PROMPT = """
 You are a helpful assistant tasked with answering user queries efficiently. 
@@ -195,19 +192,41 @@ Query Plan: {query_plan}
 Question: {question}
 """
 
-_GLOBAL_TOOL_SYS_PROMPT = """
-You are a helpful assistant tasked with efficiently answering user queries.
-Utilize the provided tools to progress towards answering the question.
-Based on the user's question, compose a SQL query if necessary, validate and run the results, and then provide an answer.
-If a query fails to execute more than twice, provide a failure message and suggest a retry with more specific instruction in your final answer.
-Do not include any hallucinated or fabricated numbers in the results under any circumstances.
-Please provide your final answer in {language}.
+_FINAL_ANSWER_SYS_PROMPT = """
+You are a helpful assistant tasked with efficiently answering user queries in {language}.
+Please provide the answer using only the provided context. The response should include the following elements in the specified format:
 
-Make sure to include the below in your final answer:
-1. SQL query (Markdown Codeblock)
-2. Dataframe (Table in Codeblock) : Clarify if it's partial result.
-3. Result Data/SQL Filename (e.g. "\n`DataFile: ./result_files/query_result_....csv` \n\n`SQLFile: './result_files/query_....sql`")
-4. Answer to the user's question (Text)
+1. --Final Answer--
+2. SQL Query: Display the SQL query in a Markdown code block.
+3. Dataframe: Show the resulting dataframe in a table format within a code block. Mention if the result is partial.
+4. Filenames: Include the paths to the result CSV and SQL files in the following format:
+  - DataFile: './result_files/query_result_....csv'
+  - SQLFile: './result_files/query_....sql'
+5. Answer: Provide a clear and concise answer to the user's question.
+
+If the context does not contain the necessary information to answer the user's query, explain what specific information is missing and refer to the failure log for more details.
+Ensure the response is well-organized and easy to follow.
+"""
+
+_FINAL_ANSWER_USER_PROMPT = """
+<context>
+{context}
+<context>
+
+Question: {question}
+"""
+
+_GLOBAL_TOOL_SYS_PROMPT = """
+You are a proficient assistant equipped with various tools to handle Text-to-SQL tasks and data aquisition as per user's requests. 
+Your job is to utilize these tools towards the final results. Do not provide the final answer directly, just make a progress using tools towards the final results. 
+Each tool's results and next instruction will be delivered via result messages. 
+
+- Refer to the Conversation History to follow the communication context.
+- (If needed) Prompt Refinement Task: Refine the user's prompt using the designated tool.
+- (If needed) Text-to-SQL Task: Convert the user's question into an appropriate SQL query using the designated tool.
+- Query Execution: Validate and execute the generated SQL query using the designated tool.
+- Monitor Progress: Track the progress of each tool's operation and provide the progress at each stage in {language}.
+- Stop Condition: Success message from query execution or failure more than twice on a same tool.
 """
 
 _GLOBAL_TOOL_USER_PROMPT = """
@@ -281,11 +300,20 @@ def get_query_validation_prompt(dialect, query_plan, original_query, language, q
         question=question
     )
 
-def get_global_tool_prompt(language, history, question):
+def get_global_prompt(language, history, question):
     return create_prompt(
         _GLOBAL_TOOL_SYS_PROMPT,
         _GLOBAL_TOOL_USER_PROMPT,
         language=language,
         history=history,
+        question=question
+    )
+
+def get_answer_generation_prompt(language, context, question):
+    return create_prompt(
+        _FINAL_ANSWER_SYS_PROMPT,
+        _FINAL_ANSWER_USER_PROMPT,
+        language=language,
+        context=context,
         question=question
     )

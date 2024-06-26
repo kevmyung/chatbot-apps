@@ -40,7 +40,8 @@ from .prompts import (
     get_prompt_refinement_prompt, 
     get_sample_selection_prompt, 
     get_query_validation_prompt,
-    get_global_tool_prompt
+    get_answer_generation_prompt,
+    get_global_prompt
 )
 from .opensearch import OpenSearchHybridRetriever, OpenSearchClient
 
@@ -254,14 +255,13 @@ class DB_Tools:
         self.prompt = prompt
         self.sql_os_client = sql_os_client
         self.schema_os_client = schema_os_client
+        self.init_result()
         self.engine = create_engine(uri)
         self.db = SQLDatabase(self.engine)
         self.client = self.init_boto3_client(region)
         self.samples = self.collect_samples()
         self.display_samples()
-        self.trial = 0
-        self.failure_log = ""
-        self.failed_query = ""
+        self.retry = 0
 
     def init_boto3_client(self, region: str):
         retry_config = Config(
@@ -269,6 +269,15 @@ class DB_Tools:
             retries={"max_attempts": 10, "mode": "standard"}
         )
         return boto3.client("bedrock-runtime", region_name=region, config=retry_config)
+
+    def init_result(self):
+        self.result = {
+            "final_query": "None",
+            "sql_query_file": "None",
+            "result_csv_file": "None",
+            "failure_log": "None",
+            "failed_query": "None"
+        }
 
     def update_tokens(self, res):
         self.tokens["total_input_tokens"] += res["usage"]["inputTokens"]
@@ -283,6 +292,10 @@ class DB_Tools:
             self.print_sql_samples(self.samples)
 
     def print_sql_samples(self, selected_samples: List[str]) -> None:
+        if not selected_samples:
+            st.text("There is no similar samples.")
+            return
+        
         for page_content in selected_samples:
             try:
                 page_content_dict = json.loads(page_content)
@@ -308,11 +321,12 @@ class DB_Tools:
         response = self.client.converse(modelId=self.model, messages=usr_prompt, system=sys_prompt)
         self.update_tokens(response)
         sample_ids = response['output']['message']['content'][0]['text']
-
-        sample_ids_list = [int(id.strip()) for id in sample_ids.split(',') if id.strip()]
-        selected_samples = [page_contents[id] for id in sample_ids_list] if sample_ids_list else []
-
-        return selected_samples
+        if sample_ids == '""' or sample_ids.strip() == "":
+            return []
+        else:
+            sample_ids_list = [int(id.strip()) for id in sample_ids.split(',') if id.strip().isdigit()]
+            selected_samples = [page_contents[id] for id in sample_ids_list] if sample_ids_list else []
+            return selected_samples
 
     def get_table_summaries_by_similarities(self):
         if self.schema_os_client:
@@ -463,6 +477,18 @@ class DB_Tools:
                 file.write(query)
             return csv_file, query_file, df
 
+    def query_failure_handling(self, log, query):
+        self.result["failure_log"] = log
+        self.result["failed_query"] = query
+        if self.retry >= 2:
+            action = "Stop the sequence."
+        else:
+            action = "Retry the query generation"
+        return {
+            "failure_log": log,
+            "next_action": action
+        } 
+
     def prompt_refinement(self, input: str):
         query = {
             "_source": ["table_name", "table_desc"],
@@ -496,9 +522,7 @@ class DB_Tools:
 
     def query_generation(self, input: str):
         table_names = self.db.get_usable_table_names()
-        failure_log = self.failure_log if self.failure_log else 'None'
-        failed_query = self.failed_query if self.failed_query else 'None'
-        combined_log = f"failure_log: {failure_log}, failed_query: {failed_query}"
+        combined_log = f'failure_log: {self.result["failure_log"]}, failed_query: {self.result["failed_query"]}'
 
         # Get Table Summaries
         if len(table_names) >= 10:
@@ -530,17 +554,13 @@ class DB_Tools:
         
         parsed_json = self.parse_json_format(response['output']['message']['content'][0]['text'])
         return parsed_json
-    
+
     def validate_and_run_queries(self, generated_query: str):
         explain_query = self.get_explain_query(generated_query)
         try:
             query_plan = self.db.run_no_throw(explain_query)
         except Exception as e:
-            return {
-                "failure_log": f"An error occurred while generating the EXPLAIN query: {str(e)}",
-                "failed_query": generated_query
-            }
-
+            return self.query_failure_handling(f"An error occurred while generating the EXPLAIN query: {str(e)}", generated_query)
     
         try:
             sys_prompt, usr_prompt = get_query_validation_prompt(self.dialect, query_plan, generated_query, self.language, self.prompt)
@@ -555,45 +575,34 @@ class DB_Tools:
             query = parsed_json.get("final_query") 
             output_columns = parsed_json.get("output_columns")
         except Exception as e:
-            return {
-                "failure_log": f"An issue unrelated to the query was encountered: {str(e)} (Model-related problem)",
-                "failed_query": query
-            }
+            return self.query_failure_handling(f"An issue unrelated to the query was encountered: {str(e)} (Model-related problem)", generated_query)
   
         try:
             result = self.db.run_no_throw(query)
         except Exception as e:
-            return {
-                "failure_log": f"An error occurred while executing the final query: {str(e)}",
-                "failed_query": query
-            }
-     
+            return self.query_failure_handling(f"An error occurred while executing the final query: {str(e)}", query)
 
         if result is None or (isinstance(result, (list, tuple)) and len(result) == 0):
-            return json.dumps({"message": "Query executed successfully, but no matching data found."})
+            self.result["final_query"] = query
+            self.result["result_csv_file"] = "No data found from query execution" 
+            return {"message": "Query executed successfully, but no matching data found."}
         
         try:
             csv_file, query_file, df = self.save_to_csv(result, output_columns, query)
         except Exception as e:
-            return {
-                "failure_log": f"An error occurred while saving the results to CSV: {str(e)}",
-                "failed_query": query
-            }
-    
-        output = {
-            "final_query": query,
-            "sql_query_file": query_file,
-            "full_result_file": csv_file,
-        }
-        if len(df) > 20:
-            output["partial_result"] = df[:20].to_dict(orient='records')
-        else:
-            output["full_result"] = df.to_dict(orient='records')
+            return self.query_failure_handling(f"An error occurred while saving the results to CSV: {str(e)}", query)
 
-        return output
+        self.result["final_query"] = query
+        self.result["sql_query_file"] = query_file
+        self.result["result_csv_file"] = csv_file
+        if len(df) > 20:
+            self.result["partial_result"] = df[:20].to_dict(orient='records')
+        else:
+            self.result["full_result"] = df.to_dict(orient='records')
+        return {"message": "Query executed successfully"}
         
     def tool_router(self, tool, callback):
-        with st.spinner(f"Running {tool['name']}..."):
+        with st.spinner(f"Running Tool... ({tool['name']}, Retry: {self.retry})"):
             if tool['name'] == 'prompt_refinement':
                 res = self.prompt_refinement(tool['input']['input'])
                 tool_result = {"toolUseId": tool['toolUseId'], "content": [{"json": res}]}
@@ -601,20 +610,18 @@ class DB_Tools:
                 res = self.query_generation(tool['input']['input'])
                 tool_result = {"toolUseId": tool['toolUseId'], "content": [{"json": res}]}
             elif tool['name'] == 'validate_and_run_queries':
-                self.trial += 1
                 res = self.validate_and_run_queries(tool['input']['generated_query'])
                 tool_result = {"toolUseId": tool['toolUseId'], "content": [{"json": res}]}
-                if 'failure_log' in res:
-                    self.failure_log = res['failure_log']
-                    self.failed_query = res['failed_query']
+                if 'failure_log' not in res:
+                    self.retry = 0
+                    self.result["failure_log"] = "None"
+                    self.result["failed_query"] = "None"
                 else:
-                    self.trial = 0
-                    self.failure_log = ""
-                    self.failed_query = ""
+                    self.retry += 1
             else:
                 tool_result = {"toolUseId": tool['toolUseId'], "content": [{"text": "Unknown tool name"}]}
 
-        #print("Tool_Result:", res)
+        # print("[DEBUG] Tool_Result:", res)
         callback.on_llm_new_result(json.dumps({
             "tool_name": tool['name'], 
             "content": tool_result["content"][0]
@@ -635,7 +642,7 @@ class DB_Tool_Client:
         self.client = self.init_boto3_client(self.region)
         self.tokens = {'total_input_tokens': 0, 'total_output_tokens': 0, 'total_tokens': 0}
         self.prompt = prompt
-        self.sys_prompt, self.usr_prompt = get_global_tool_prompt(language, history, prompt)
+        self.sys_prompt, self.usr_prompt = get_global_prompt(language, history, prompt)
         self.db_tool = DB_Tools(self.tokens, config['uri'], self.dialect, self.model, self.region, sql_os_client, schema_os_client, language, prompt)
 
     def init_boto3_client(self, region: str):
@@ -649,14 +656,14 @@ class DB_Tool_Client:
         with open("./db_metadata/tool_config.json", 'r') as file:
             return json.load(file)
 
-    def stream_messages(self, messages, callback):
+    def stream_messages(self, usr_prompt, sys_prompt, callback):
         response = self.client.converse_stream(
             modelId=self.model,
-            messages=messages,
-            system=self.sys_prompt,
+            messages=usr_prompt,
+            system=sys_prompt,
             toolConfig=self.tool_config
         )
-
+        
         stop_reason = ""
         message = {"content": []}
         text = ''
@@ -695,7 +702,7 @@ class DB_Tool_Client:
 
     def invoke(self, callback):
         messages = self.usr_prompt
-        stop_reason, message = self.stream_messages(messages, callback)
+        stop_reason, message = self.stream_messages(messages, self.sys_prompt, callback)
         messages.append(message)
 
         while stop_reason == "tool_use":
@@ -707,9 +714,12 @@ class DB_Tool_Client:
                 message = self.db_tool.tool_router(tool_use, callback)
                 messages.append(message)
 
-            stop_reason, message = self.stream_messages(messages, callback)
+            stop_reason, message = self.stream_messages(messages, self.sys_prompt, callback)
             messages.append(message)
 
+        # Generating Final Response
+        sys_prompt, usr_prompt = get_answer_generation_prompt(self.language, self.db_tool.result, self.usr_prompt)
+        stop_reason, message = self.stream_messages(usr_prompt, sys_prompt, callback)
         final_response = message['content'][0]['text']
         self.tokens['total_tokens'] = self.tokens['total_input_tokens'] + self.tokens['total_output_tokens']
         return final_response, self.tokens
