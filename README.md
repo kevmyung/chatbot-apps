@@ -1,89 +1,90 @@
-# Bedrock 기반 챗봇 애플리케이션
+# Bedrock-based Chatbot Application
 
 
-## 실행 순서
+## Execution Steps
 
-1. 필요한 패키지 설치:
+1. Install the required packages:
 ```
 pip install -r requirements.txt
 ```
-*여러 라이브러리가 설치되기 때문에, 사용 환경에 따라 의존성 오류가 발생할 수 있습니다. 설치 전에, 기존 환경과의 버전 호환성을 체크해주세요.
+*Note: Since multiple libraries will be installed, dependency errors may occur depending on your environment. Check version compatibility with your existing environment before installation.
 
-2. 원하는 챗봇 애플리케이션 실행:
+2. Run the desired chatbot application:
 ```
 streamlit run {Chatbot file}.py
 ```
 
-## 예시
+## Examples
 
 ### 1. **Basic Chat**
 ```
 streamlit run 1.basic-chat.py
 ```
 ![Basic Chat](./images/1.basic-chat.png)
-- Bedrock 기반 모델 선택
-- 시스템 프롬프트 제공
-- 대화용 메모리 버퍼
-- Base 코드 활용 : [Bedrock-ChatBot-with-LangChain-and-Streamlit](https://github.com/davidshtian/Bedrock-ChatBot-with-LangChain-and-Streamlit)
+- Select a Bedrock-based model
+- Provide a system prompt
+- Use a conversation memory buffer
+- Base code:  [Bedrock-ChatBot-with-LangChain-and-Streamlit](https://github.com/davidshtian/Bedrock-ChatBot-with-LangChain-and-Streamlit)
 
 ### 2. **Chat with Input**
 ```
 streamlit run 2.chat-with-input.py
 ```
 ![Chat with Input](./images/2.chat-with-input.png)
-- 기본 챗봇 기능 (`1. Basic Chat`)
-- 파일 입력을 "단기 보관 메모리(Short Term Memory)"로 활용
-    - 지원하는 입력 유형 : 이미지, PDF, CSV, 파이썬 코드 등
-
+- Basic chatbot features  (`1. Basic Chat`)
+- Utilize file input as "Short Term Memory"
+    - Supported input types: images, PDFs, CSV, Python code, etc.
 
 ### 3-1. **Chat RAG FAISS with Image Context**
 ```
 streamlit run 3-1.chat-rag-faiss.py
 ```
 ![Chat RAG FAISS](./images/3-1.chat-rag-faiss.png)
-- 기본 챗봇 기능 (`1. Basic Chat`)
-- 파일 입력을 "장기 보관 메모리(Long Term Memory)"로 활용
-    - 입력된 PDF 파일을 벡터로 변환 (Bedrock 임베딩 모델)
-    - 변환된 벡터를 FAISS의 로컬 데이터베이스에 저장
-    - 사용자 질문을 시맨틱 검색하여, 답변을 위한 컨텍스트로 활용
-- PDF 페이지를 이미지로 저장한 후, 검색 결과의 컨텍스트로 제공
-    - 추가 라이브러리 `sudo apt-get install poppler-utils`
+- Basic chatbot features (`1. Basic Chat`)
+- Utilize file input as "Long Term Memory"
+    - Convert input PDF files into vectors (Bedrock embedding model)
+    - Store converted vectors in FAISS local database
+    - Perform semantic search on user queries to provide context for answers
+- Save PDF pages as images and provide them as context for search results
+    - Additional library `sudo apt-get install poppler-utils`
  
 ### 3-2. **Chat RAG OpenSearch with Hybrid Retriever**
-1. CloudFormation 파일(`cloudformation/setup_opensearch.yaml`)로 OpenSearch 클러스터 생성
-    - 기존에 생성된 클러스터를 재사용 가능
-3. `libs/opensearch.yml` 파일의 연결 정보 업데이트
-4. 챗봇 애플리케이션 실행
+1. Create an OpenSearch cluster using the CloudFormation file (`cloudformation/setup_opensearch.yaml`)
+    - Existing clusters can be reused
+2. Update the connection information in the `libs/opensearch.yml` file
+3. Run the chatbot application
 ```
 streamlit run 3-2.chat-rag-opensearch-hybrid.py
 ```
 ![Chat with Input](./images/3-2.chat-rag-opensearch.png)
-- 기본 챗봇 기능 (`1. Basic Chat`)
-- 파일 입력을 "장기 보관 메모리(Long Term Memory)"로 활용
-    - 입력된 PDF 파일을 벡터로 변환 (Bedrock 임베딩 모델)
-    - 변환된 벡터를 Amazon OpenSearch Service 클러스터에 저장 
-    - 사용자 질문을 시맨틱 & 텍스트으로 검색하고, 검색 결과를 조합(앙상블)하여 답변을 위한 컨텍스트로 활용
-- OpenSearch Hybrid Search 코드 활용 : [aws-ai-ml-workshop-kr](https://github.com/aws-samples/aws-ai-ml-workshop-kr/blob/master/genai/aws-gen-ai-kr/utils/rag.py)
+- Basic chatbot features (`1. Basic Chat`)
+- Utilize file input as "Long Term Memory"
+    - Convert input PDF files into vectors (Bedrock embedding model)
+    - Store converted vectors in an Amazon OpenSearch Service cluster
+    - Perform semantic and textual search on user queries, combining results (ensemble) to provide context for answers
+- OpenSearch Hybrid Search Base Code: [aws-ai-ml-workshop-kr](https://github.com/aws-samples/aws-ai-ml-workshop-kr/blob/master/genai/aws-gen-ai-kr/utils/rag.py)
 
 ### 4. **Chat SQL Agent**
 ```
 streamlit run 4.chat-sql-agent.py
 ```
 ![Chat SQL Agent](./images/4.chat-sql-agent.png)
-- Langchain XML Agent 기반으로 사용자의 자연어 요청을 SQL로 변환/실행
-- 샘플 데이터베이스([Chinook DB](https://github.com/lerocha/chinook-database))를 활용하거나, 데이터베이스 URI 입력
-- DB 스키마(테이블/컬럼)에 대한 상세 Description 참고 : OpenSearch 활용
-- 샘플 쿼리의 RAG 패턴 참조 기능 : OpenSearch Hybrid Search 활용
+- Convert and execute user's natural language requests into SQL using Langchain XML Agent
+- Utilize sample database ([Chinook DB](https://github.com/lerocha/chinook-database)) or input database URI 
+- Refer to detailed descriptions of DB schema (tables/columns) using OpenSearch
+- Reference RAG pattern for sample queries using OpenSearch Hybrid Search
 
 ### 5. **Chat SQL Tools**
 ```
 streamlit run 5.chat-sql-tools.py
 ```
 ![Chat SQL Tools](./images/5.chat-sql-tools.png)
-- Amazon Bedrock [Tool Use](https://docs.aws.amazon.com/bedrock/latest/userguide/tool-use.html) 기반으로 사용자의 자연어 요청을 SQL로 변환/실행
-- 샘플 데이터베이스([Chinook DB](https://github.com/lerocha/chinook-database))를 활용하거나, 데이터베이스 URI 입력
-- DB 스키마(테이블/컬럼)에 대한 상세 Description 참고 : OpenSearch 활용
-- 샘플 쿼리의 RAG 패턴 참조 기능 : OpenSearch Hybrid Search 활용
-- Query Cross-Validation with Llama3
-- 쿼리 실행 내역을 CSV 파일로 저장
-- Python REPL을 활용한 차트 시각화 (진행 중)
+- Convert and execute user's natural language requests into SQL using Amazon Bedrock [Tool Use](https://docs.aws.amazon.com/bedrock/latest/userguide/tool-use.html)
+- Utilize sample database ([Chinook DB](https://github.com/lerocha/chinook-database)) or input database URI
+- Prepare reference data [Link](https://github.com/kevmyung/db-schema-loader)
+    - Apply RAG pattern to sample queries using OpenSearch
+    - Apply RAG pattern to DB schema using OpenSearch
+- Refine user requests into suitable prompts
+- Optimize based on query plan
+- Save query results (CSV) and SQL logs
+- Visualize query results (CSV) (in progress)

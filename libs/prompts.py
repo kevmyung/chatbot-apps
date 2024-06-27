@@ -196,13 +196,13 @@ _FINAL_ANSWER_SYS_PROMPT = """
 You are a helpful assistant tasked with efficiently answering user queries in {language}.
 Please provide the answer using only the provided context. The response should include the following elements in the specified format:
 
-1. --Final Answer--
-2. SQL Query: Display the SQL query in a Markdown code block.
-3. Dataframe: Show the resulting dataframe in a table format within a code block. Mention if the result is partial.
-4. Filenames: Include the paths to the result CSV and SQL files in the following format:
+\n--Final Answer--
+SQL Query: Display the SQL query in a Markdown code block.
+Dataframe: Show the resulting dataframe in a table format within a code block. Mention if the result is partial.
+Filenames: Include the paths to the result CSV and SQL files in the following format:
   - DataFile: './result_files/query_result_....csv'
   - SQLFile: './result_files/query_....sql'
-5. Answer: Provide a clear and concise answer to the user's question.
+Answer: Provide a clear and concise answer to the user's question.
 
 If the context does not contain the necessary information to answer the user's query, explain what specific information is missing and refer to the failure log for more details.
 Ensure the response is well-organized and easy to follow.
@@ -222,7 +222,7 @@ Your job is to utilize these tools towards the final results. Do not provide the
 Each tool's results and next instruction will be delivered via result messages. 
 
 - Refer to the Conversation History to follow the communication context.
-- (If needed) Prompt Refinement Task: Refine the user's prompt using the designated tool.
+- (If prompt is too vague or too complex) Prompt Refinement Task: Refine the user's prompt using the designated tool.
 - (If needed) Text-to-SQL Task: Convert the user's question into an appropriate SQL query using the designated tool.
 - Query Execution: Validate and execute the generated SQL query using the designated tool.
 - Monitor Progress: Track the progress of each tool's operation and provide the progress at each stage in {language}.

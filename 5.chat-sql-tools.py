@@ -5,7 +5,7 @@ from libs.db_utils import DB_Tool_Client
 from libs.config import load_model_config, load_language_config
 from libs.models import ChatModel, calculate_cost_from_tokens
 from libs.opensearch import init_opensearch
-from libs.chat_utils import display_chat_messages, get_prompt_with_history, ToolStreamHandler, update_tokens_and_costs, calculate_and_display_costs
+from libs.chat_utils import display_chat_messages, update_tokens_and_costs, calculate_and_display_costs,ToolStreamHandler
 
 st.set_page_config(page_title='Bedrock AI Chatbot', page_icon="🤖", layout="wide")
 st.title("🤖 Bedrock AI Chatbot")
@@ -99,14 +99,7 @@ def main() -> None:
     if "messages" not in st.session_state:
         st.session_state.messages = [INIT_MESSAGE]
     if "tokens" not in st.session_state:
-        st.session_state.tokens = {
-            'total_input_tokens': 0,
-            'total_output_tokens': 0,
-            'total_tokens': 0,
-            'delta_input_tokens': 0,
-            'delta_output_tokens': 0,
-            'delta_total_tokens': 0
-        }
+        st.session_state.tokens = {'total_input_tokens': 0, 'total_output_tokens': 0, 'total_tokens': 0, 'delta_input_tokens': 0, 'delta_output_tokens': 0, 'delta_total_tokens': 0}
 
     display_chat_messages([])
     prompt = st.chat_input(placeholder=lang_config['example_msg'])

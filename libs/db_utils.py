@@ -255,7 +255,7 @@ class DB_Tools:
         self.prompt = prompt
         self.sql_os_client = sql_os_client
         self.schema_os_client = schema_os_client
-        self.init_result()
+        self.init_tool_state()
         self.engine = create_engine(uri)
         self.db = SQLDatabase(self.engine)
         self.client = self.init_boto3_client(region)
@@ -270,8 +270,8 @@ class DB_Tools:
         )
         return boto3.client("bedrock-runtime", region_name=region, config=retry_config)
 
-    def init_result(self):
-        self.result = {
+    def init_tool_state(self):
+        self.tool_state = {
             "final_query": "None",
             "sql_query_file": "None",
             "result_csv_file": "None",
@@ -478,8 +478,8 @@ class DB_Tools:
             return csv_file, query_file, df
 
     def query_failure_handling(self, log, query):
-        self.result["failure_log"] = log
-        self.result["failed_query"] = query
+        self.tool_state["failure_log"] = log
+        self.tool_state["failed_query"] = query
         if self.retry >= 2:
             action = "Stop the sequence."
         else:
@@ -522,7 +522,7 @@ class DB_Tools:
 
     def query_generation(self, input: str):
         table_names = self.db.get_usable_table_names()
-        combined_log = f'failure_log: {self.result["failure_log"]}, failed_query: {self.result["failed_query"]}'
+        combined_log = f'failure_log: {self.tool_state["failure_log"]}, failed_query: {self.tool_state["failed_query"]}'
 
         # Get Table Summaries
         if len(table_names) >= 10:
@@ -583,8 +583,8 @@ class DB_Tools:
             return self.query_failure_handling(f"An error occurred while executing the final query: {str(e)}", query)
 
         if result is None or (isinstance(result, (list, tuple)) and len(result) == 0):
-            self.result["final_query"] = query
-            self.result["result_csv_file"] = "No data found from query execution" 
+            self.tool_state["final_query"] = query
+            self.tool_state["result_csv_file"] = "No data found from query execution" 
             return {"message": "Query executed successfully, but no matching data found."}
         
         try:
@@ -592,13 +592,13 @@ class DB_Tools:
         except Exception as e:
             return self.query_failure_handling(f"An error occurred while saving the results to CSV: {str(e)}", query)
 
-        self.result["final_query"] = query
-        self.result["sql_query_file"] = query_file
-        self.result["result_csv_file"] = csv_file
+        self.tool_state["final_query"] = query
+        self.tool_state["sql_query_file"] = query_file
+        self.tool_state["result_csv_file"] = csv_file
         if len(df) > 20:
-            self.result["partial_result"] = df[:20].to_dict(orient='records')
+            self.tool_state["partial_result"] = df[:20].to_dict(orient='records')
         else:
-            self.result["full_result"] = df.to_dict(orient='records')
+            self.tool_state["full_result"] = df.to_dict(orient='records')
         return {"message": "Query executed successfully"}
         
     def tool_router(self, tool, callback):
@@ -614,8 +614,8 @@ class DB_Tools:
                 tool_result = {"toolUseId": tool['toolUseId'], "content": [{"json": res}]}
                 if 'failure_log' not in res:
                     self.retry = 0
-                    self.result["failure_log"] = "None"
-                    self.result["failed_query"] = "None"
+                    self.tool_state["failure_log"] = "None"
+                    self.tool_state["failed_query"] = "None"
                 else:
                     self.retry += 1
             else:
@@ -653,7 +653,7 @@ class DB_Tool_Client:
         return boto3.client("bedrock-runtime", region_name=region, config=retry_config)
 
     def load_tool_config(self):
-        with open("./db_metadata/tool_config.json", 'r') as file:
+        with open("./db_metadata/db_tool_config.json", 'r') as file:
             return json.load(file)
 
     def stream_messages(self, usr_prompt, sys_prompt, callback):
@@ -718,20 +718,8 @@ class DB_Tool_Client:
             messages.append(message)
 
         # Generating Final Response
-        sys_prompt, usr_prompt = get_answer_generation_prompt(self.language, self.db_tool.result, self.usr_prompt)
+        sys_prompt, usr_prompt = get_answer_generation_prompt(self.language, self.db_tool.tool_state, self.usr_prompt)
         stop_reason, message = self.stream_messages(usr_prompt, sys_prompt, callback)
         final_response = message['content'][0]['text']
         self.tokens['total_tokens'] = self.tokens['total_input_tokens'] + self.tokens['total_output_tokens']
         return final_response, self.tokens
-
-
-class InsightTool:
-    def __init__(self, filename):
-        self.csv_path = filename
-        
-    def csv_visualizer(self, code: Annotated[str, "The python code to execute to generate your chart."]):
-        try:
-            result = self.repl.run(code)
-        except BaseException as e:
-            return f"Failed to execute. Error: {repr(e)}"
-        return f"Successfully executed:\n```python\n{code}\n```\nStdout: {result}"
