@@ -96,5 +96,4 @@ streamlit run 5.chat-sql-tools.py
 - Optimize based on query plan
 - Save query results (CSV) and SQL logs
 - Visualize query results (CSV) or image (PNG, JPG).
-    - Still in progress.
 ![Chat SQL Tools Analysis](./images/5.chat-sql-tools-analysis.png)
