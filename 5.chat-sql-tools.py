@@ -148,5 +148,5 @@ if __name__ == "__main__":
     if st.session_state.page == "main":
         main()
     if st.session_state.page == "analyze":
-        analyze_main(lang_config)
+        analyze_main()
 

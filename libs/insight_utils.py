@@ -38,11 +38,11 @@ class Insight_Tools:
         )
         return boto3.client("bedrock-runtime", region_name=region, config=retry_config)
     
-    def length_checker(self):
+    def preprocessing_dataframe(self):
         rows, cols = self.dataframe.shape
         if rows * cols > 200:
-            data = self.sampling_data(data, rows, cols)
-            self.datatype = "samplesd_"
+            #data = self.sampling_data(self.dataframe, rows, cols)
+            self.datatype = "sampled_"
         else:
             self.datatype = "full_"
 
@@ -53,18 +53,18 @@ class Insight_Tools:
         full_code_block = imports + dataframe_code + code_block + plot_code
         return full_code_block
 
-    def code_generation(self):
+    def code_generation(self, plot_type):
         csv_string = self.dataframe.to_csv(index=False)
         csv_string_escaped = csv_string.replace('\n', '\\n').replace('"', '\\"')
-        self.length_checker()
+        self.preprocessing_dataframe()
         
-        sys_prompt, usr_prompt = get_code_generation_prompt(csv_string_escaped, self.datatype)
+        sys_prompt, usr_prompt = get_code_generation_prompt(csv_string_escaped, self.datatype, plot_type)
         response = self.boto3_client.converse(modelId=self.model, messages=usr_prompt, system=sys_prompt)
         code_block = response['output']['message']['content'][0]['text']
         full_code_block = self.formatting_code_frame(csv_string_escaped, code_block)
         return full_code_block
 
-    def full_column_checker(self):
+    def get_unique_column_values(self):
         unique_values = {col: self.dataframe[col].unique().tolist() for col in self.dataframe}
         
     def sampling_data(self, data, rows, cols):
@@ -97,7 +97,7 @@ class Insight_Tools:
 
 
 class Insight_Tool_Client:
-    def __init__(self, model_info, language, dataframe):
+    def __init__(self, model_info, language, dataframe, plot_type):
         self.model = model_info['model_id']
         self.region = model_info['region_name']
         self.language = language
@@ -105,6 +105,7 @@ class Insight_Tool_Client:
         #self.tool_config = self.load_tool_config()
         self.boto3_client = self.init_boto3_client(self.region)
         self.tokens = {'total_input_tokens': 0, 'total_output_tokens': 0, 'total_tokens': 0}
+        self.plot_type = plot_type
         self.insight_tools = Insight_Tools(model_info, language, dataframe)
 
     def init_boto3_client(self, region: str):
@@ -115,7 +116,7 @@ class Insight_Tool_Client:
         return boto3.client("bedrock-runtime", region_name=region, config=retry_config)
     
     def invoke(self):
-        code = self.insight_tools.code_generation()
+        code = self.insight_tools.code_generation(self.plot_type)
         try:
             exec(code)
         except:
@@ -131,6 +132,7 @@ def handle_language_change() -> None:
 def render_sidebar() -> Tuple[Dict, Dict, Dict]:
     if st.sidebar.button("Back to Main", type="primary"):
         st.session_state.page = "main"
+        st.session_state.file_content = []
         st.rerun()
     global lang_config
     language = st.sidebar.selectbox(
@@ -159,7 +161,8 @@ def render_sidebar() -> Tuple[Dict, Dict, Dict]:
     return model_info
 
 def input_file_processor():
-    file_content = []
+    if 'file_content' not in st.session_state:
+        st.session_state.file_content = []
     uploaded_files = []
     
     file_path = st.sidebar.text_input('File Path (CSV, JPG, PNG)', value="./result_files/sample_data.csv")
@@ -180,20 +183,27 @@ def input_file_processor():
         uploaded_files.append(custom_file)
 
     if uploaded_files:
-        file_content = process_uploaded_files(uploaded_files, [], [])
-    return file_content
-
-def analyze_main(lang_config):
+        st.session_state.file_content = process_uploaded_files(uploaded_files, [], [])
     
+    return st.session_state.file_content
+
+def select_plot_type(container):
+    plot_types = ["Auto", "Bar Chart", "Line Chart", "Area Chart", "Box Plot", "Scatter Plot", "Bubble Chart"]   
+    plot_type = container.selectbox("Choose Plot Type", options=plot_types, index=0)
+    return plot_type
+
+def analyze_main():    
     model_info = render_sidebar()
-    file_content = input_file_processor()
-    if file_content != []:
-        if file_content[0]['type'] == 'text':
-            input_dataframe = pd.read_csv(StringIO(file_content[0]['text']))
-            insight_client = Insight_Tool_Client(model_info, st.session_state['language_select_insight'], input_dataframe)
+    input_file_processor()
+    if 'file_content' in st.session_state and st.session_state.file_content:
+        if st.session_state.file_content[0]['type'] == 'text':
+            input_dataframe = pd.read_csv(StringIO(st.session_state.file_content[0]['text']))
+            plot_type_container = st.empty()
+            plot_type = select_plot_type(plot_type_container)
+            insight_client = Insight_Tool_Client(model_info, st.session_state['language_select_insight'], input_dataframe, plot_type)
             with st.spinner(f"Generating a visualization"):
-                response = insight_client.invoke()
-        elif file_content[0]['type'] == 'image':
+                insight_client.invoke()
+        if st.session_state.file_content[0]['type'] == 'image':
             print("image_analyzer")
         else:
             print("Unknown type")

@@ -12,3 +12,4 @@ pdf2image
 psycopg2-binary
 sqlalchemy-redshift 
 plotly
+numpy

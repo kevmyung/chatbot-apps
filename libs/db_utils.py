@@ -483,12 +483,13 @@ class DB_Tools:
         today = datetime.now(pytz.timezone('Asia/Seoul')).strftime('%Y-%m-%d')
 
         with st.spinner(f"Refining a prompt"):
-            sys_prompt, usr_prompt = get_prompt_refinement_prompt(original_prompt, today, history)
+            sys_prompt, usr_prompt = get_prompt_refinement_prompt(original_prompt, today, history, self.language)
             response = self.boto3_client.converse(modelId=self.model, messages=usr_prompt, system=sys_prompt)
         self.update_tokens(response)
         parsed_json = parse_json_format(response['output']['message']['content'][0]['text'])
         refined_prompt = parsed_json.get("refined_prompt")
-        st.write("Refined Prompt:", refined_prompt)
+        with st.expander("Auto-refined Prompt (Click to expand)", expanded=False): 
+            st.write(refined_prompt)
         return refined_prompt
 
     def query_generation(self, input: str):
@@ -700,7 +701,7 @@ class DB_Tool_Client:
             handler.close()
 
     def invoke(self, callback): 
-        sys_prompt, usr_prompt = get_global_prompt(self.language, self.prompt, self.db_tool.samples)
+        sys_prompt, usr_prompt = get_global_prompt(self.language, self.prompt)
         messages = usr_prompt
         stop_reason, message = stream_converse_messages(self.boto3_client, self.model, self.tool_config, messages, sys_prompt, callback, self.tokens)
         messages.append(message)

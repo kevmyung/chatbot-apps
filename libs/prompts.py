@@ -76,9 +76,9 @@ Please select the most relevant table(s) that can be used to generate SQL query 
 """
 
 _TABLE_SELECTION_USER_PROMPT = """
-<samples>
+<Useful_samples>
 {samples}
-</samples>
+</Useful_samples>
 
 <table_summaries>
 {table_summaries}
@@ -109,9 +109,9 @@ Your response should ONLY be based on the given context and follow the response 
 """
 
 _QUERY_GENERATION_USER_PROMPT = """
-<samples>
+<Useful_samples>
 {samples}
-</samples>
+</Useful_samples>
 
 <schemas>
 {table_schemas}
@@ -135,7 +135,7 @@ Please select the most relevant sample question(s) from the provided samples to 
 """
 
 _SAMPLES_SELECTION_USER_PROMPT = """
-Samples: {samples}
+Samples Pool: {samples}
 User Question: {question}
 """
 
@@ -175,8 +175,10 @@ Please provide the answer using only the provided context. The response should i
 SQL Query: Display the SQL query in a Markdown code block.
 Dataframe: Show the resulting dataframe in a table format within a code block. Mention if the result is partial.
 Filenames: Include the paths to the result CSV and SQL files in the following format:
-  - DataFile: './result_files/query_result_....csv'
-  - SQLFile: './result_files/query_....sql'
+  - DataFile\n
+  ```./result_files/query_result_....csv```
+  - SQLFile\n
+  ```./result_files/query_....sql```
 Answer: Provide a clear and concise answer to the user's question.
 
 If the context does not contain the necessary information to answer the user's query, explain what specific information is missing and refer to the failure log for more details.
@@ -192,26 +194,31 @@ Question: {question}
 """
 
 _DB_TOOL_SYS_PROMPT = """
-You are a proficient assistant equipped with various tools to handle Text-to-SQL tasks and data acquisition based on user requests. 
-Your job is to make progress using the provided tools towards the final results. You will receive the results and messages from each tool. 
-Do not actively engage unless the tool returns a failure message and pass it to the next appropriate tools. 
-Do not provide the final answer directly.
+You are an AI assistant specialized in Text-to-SQL tasks and data retrieval. 
+Your role is to coordinate the use of several tools to fulfill user requests. Follow these guidelines:
 
-- Text-to-SQL Task: Convert the user's question into SQL query. Use the 'query_generation' tool for writing the query unless you are over 90% confident based on the sample or context provided in the prompt.
-- Query Execution: Validate and execute the generated SQL query using the designated tool. 
-- Monitor Progress: Track the progress of each tool's operation and provide the progress at each stage in {language}.
-- Schema Exploration: Use it only if the 'validation_and_run_queries' fails due to schema errors such as 'no such table' or 'no such column'.
-- Stop Condition: Success message from query execution or failure more than twice across all tools.
+1. Your Role:
+   - Coordinate tool usage based on results from each step.
 
-Stop all operations as instructed if the Stop Condition is met, even if the task was not successful.
-If the task fails, ask more specific table names or column names in the prompt.
+2. Tool Usage:
+   - Query Generation: Use the 'query_generation' tool to write initial SQL queries.
+   - Query Execution: Employ the 'validate_and_run_queries' tool to validate and execute the generated SQL queries.
+   - Schema Exploration: Utilize the 'schema_exploration' tool only if query execution fails due to schema errors (e.g., "no such table" or "no such column").
+
+3. Workflow:
+    - Begin with query generation.
+    - Proceed to query execution.
+    - If execution fails due to schema errors, use schema exploration and retry query generation.
+
+4. Orchastration:
+   - Report the progress of each tool operation in {language}.
+   - Do not provide final answers directly.
+   - Terminate the process when all operations complete successfully or a tool returns failure messages more than twice, stop the process
+
+Proceed with the first step: query generation.
 """
 
 _DB_TOOL_USER_PROMPT = """
-<Useful_Samples>
-{samples}
-</Useful_Samples>
-
 Question: {question}
 """
 
@@ -238,20 +245,22 @@ User's Request: {question}
 """
 
 _PROMPT_REFINEMENT_SYS_PROMPT = """
-You are an expert prompt engineer, and today is {today}.
-Your task is to refine the 'original prompt' to achieve a better outcome from the online LLM chatbot.
-1. Do your best using the information provided without responding to the user with another request.
-2. Do not fabricate any details that are not provided in the context.
-3. If the 'original prompt' is contextually linked to the 'conversation history', integrate the context into the 'refined_prompt.'
-4. If there are successful SQL queries from a past conversations that are relevant to the current question, include them in the prompt with codeblock.
-5. If the requirements are too complex, break it down into smaller, more manageable sub-tasks.
-6. Skip the preamble and provide only a well-formed JSON object response.
-
+You are an expert prompt engineer. Your task:
+1. Refine the given prompt in for an LLM chatbot.
+2. Maintain the original intent and requirements.
+3. Incorporate relevant context from past conversations if applicable.
+4. Break down too complex requirements into sub-tasks if needed.
+5. Provide only the refined prompt in {language}, without preamble.
+6. Do not fabricate details or ask for more information.
+7. Format your response as a JSON object with a 'refined_prompt' key.
+ 
 <response_format>
 {{
     "refined_prompt": "Refined prompt"
 }}
 </response_format>
+
+Today is {today}. Begin refining the prompt now.
 """
 
 _PROMPT_REFINEMENT_USER_PROMPT = """
@@ -259,17 +268,19 @@ _PROMPT_REFINEMENT_USER_PROMPT = """
 {history}
 </conversation_history>
 
-original prompt: {question}
+user's prompt: {question}
 """
 
 _CODE_GENERATION_SYS_PROMPT = """
-You are a skilled data visualization engineer specializing in writing plotly python code.
-Based on the given CSV data, choose the appropriate chart type for the data and write the visualization code using plotly.
-The {datatype}dataframe to be visualized is given within the script. The code should function correctly with the full dataset.
-
-Complete the visualization code for the given Streamlit app. 
-Skip any preamble and provide only the code to replace '# Your code here'. Do not include the #--- markers or any other text in your response.
-The code should create a Plotly figure named 'fig' using the 'dataframe' that's already loaded. Here's the context:
+You are a skilled data visualization engineer specializing in plotly python code. Your task:
+1. Analyze the given {datatype} dataframe within the script.
+2. Determine the plot type: Try with {plot_type} as possible.
+3. Write the visualization code using plotly that:
+  - Correctly represents the data 
+  - Is aesthetically pleasing and easy to interpret
+  - Includes appropriate labels, titles, and legends
+  - Ensure your code will function correctly with the complete dataset provided in the script.
+4. Skip any preamble and provide only the code to replace '# Your code here'. Do not include the #--- markers or any other text in your response.
 
 <visualize.py>
 import streamlit as st
@@ -338,13 +349,14 @@ def get_sample_selection_prompt(samples, question):
         question=question
     )
 
-def get_prompt_refinement_prompt(today, history, question):
+def get_prompt_refinement_prompt(today, history, question, language):
     return create_prompt(
         _PROMPT_REFINEMENT_SYS_PROMPT,
         _PROMPT_REFINEMENT_USER_PROMPT,
         history=history,
         question=question,
-        today=today
+        today=today,
+        language=language
     )
 
 def get_query_validation_prompt(dialect, query_plan, original_query, language, question):
@@ -358,12 +370,11 @@ def get_query_validation_prompt(dialect, query_plan, original_query, language, q
         question=question
     )
 
-def get_global_prompt(language, samples, question):
+def get_global_prompt(language, question):
     return create_prompt(
         _DB_TOOL_SYS_PROMPT,
         _DB_TOOL_USER_PROMPT,
         language=language,
-        samples=samples,
         question=question
     )
 
@@ -386,10 +397,11 @@ def get_data_filtering_prompt(question, head, tail, rows):
         rows=rows
     )
 
-def get_code_generation_prompt(dataset, datatype):
+def get_code_generation_prompt(dataset, datatype, plot_type):
     return create_prompt(
         _CODE_GENERATION_SYS_PROMPT,
         _CODE_GENERATION_USER_PROMPT,
         dataset=dataset,
-        datatype=datatype
+        datatype=datatype,
+        plot_type=plot_type
     )
