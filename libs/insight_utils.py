@@ -126,7 +126,7 @@ class Insight_Tool_Client:
 
 def handle_language_change() -> None:
     global lang_config
-    lang_config = load_language_config(st.session_state['language_select'])
+    lang_config = load_language_config(st.session_state['language_select_insight'])
     set_init_message(lang_config['init_message'])
 
 def render_sidebar() -> Tuple[Dict, Dict, Dict]:

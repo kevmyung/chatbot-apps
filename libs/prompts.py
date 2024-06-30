@@ -212,8 +212,8 @@ Your role is to coordinate the use of several tools to fulfill user requests. Fo
 
 4. Orchastration:
    - Report the progress of each tool operation in {language}.
-   - Do not provide final answers directly.
-   - Terminate the process when all operations complete successfully or a tool returns failure messages more than twice, stop the process
+   - Do not provide final answers directly. Do not present any dataframe on your own.
+   - Terminate the process when all operations complete successfully or a tool returns failure messages more than twice, stop the process.
 
 Proceed with the first step: query generation.
 """
