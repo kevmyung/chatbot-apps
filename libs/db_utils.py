@@ -33,6 +33,7 @@ from langchain_core.language_models import BaseLanguageModel
 from langchain_core.pydantic_v1 import Field
 
 # Custom Module Imports
+from .chat_utils import parse_json_format, stream_converse_messages
 from .prompts import (
     get_sql_prompt, 
     get_table_selection_prompt, 
@@ -47,6 +48,7 @@ from .opensearch import OpenSearchHybridRetriever, OpenSearchClient
 
 warnings.filterwarnings("ignore", r".*support Decimal objects natively, and SQLAlchemy", SAWarning)
 logging.basicConfig(level=logging.ERROR, filename='error.log')
+logging.basicConfig(level=logging.INFO, filename='execution_log.json', format='%(message)s')
 
 class DatabaseClient:
     def __init__(self, llm, config, sql_os_client, schema_os_client):
@@ -245,20 +247,20 @@ class CustomSQLDatabaseToolkit(BaseToolkit):
         ]
 
 class DB_Tools:
-    def __init__(self, tokens: dict, uri: str, dialect: str, model: str, region: str, sql_os_client: OpenSearchClient, schema_os_client: OpenSearchClient, language: str, prompt: str):
+    def __init__(self, tokens: dict, uri: str, dialect: str, model: str, region: str, sql_os_client: OpenSearchClient, schema_os_client: OpenSearchClient, language: str, prompt: str, history: str):
         self.tokens = tokens
         self.uri = uri
         self.dialect = dialect
         self.model = model
         self.region = region
         self.language = language
-        self.prompt = prompt
         self.sql_os_client = sql_os_client
         self.schema_os_client = schema_os_client
-        self.init_tool_state()
+        self.boto3_client = self.init_boto3_client(region)
         self.engine = create_engine(uri)
         self.db = SQLDatabase(self.engine)
-        self.client = self.init_boto3_client(region)
+        self.prompt = self.prompt_refinement(prompt, history)
+        self.init_tool_state(prompt)
         self.samples = self.collect_samples()
         self.display_samples()
         self.retry = 0
@@ -270,13 +272,18 @@ class DB_Tools:
         )
         return boto3.client("bedrock-runtime", region_name=region, config=retry_config)
 
-    def init_tool_state(self):
+    def init_tool_state(self, prompt):
         self.tool_state = {
+            "user_prompt": prompt,
+            "refined_prompt": self.prompt,
+            "initial_query": "None",
             "final_query": "None",
             "sql_query_file": "None",
             "result_csv_file": "None",
             "failure_log": "None",
-            "failed_query": "None"
+            "failed_query": "None",
+            "search_result": "None",
+            "success": "False"
         }
 
     def update_tokens(self, res):
@@ -308,38 +315,35 @@ class DB_Tools:
             except json.JSONDecodeError:
                 st.text("Invalid page_content format")  
 
-    def get_sample_queries(self):
-        if not self.sql_os_client:
-            return []
-        
+    def get_sample_queries(self): 
         sql_os_retriever = OpenSearchHybridRetriever(self.sql_os_client, 10)
         samples = sql_os_retriever.invoke(self.prompt, ensemble=[0.40, 0.60])
         page_contents = [doc.page_content for doc in samples if doc is not None]
         sample_inputs = [json.loads(content)['input'] for content in page_contents]
 
         sys_prompt, usr_prompt = get_sample_selection_prompt(sample_inputs, self.prompt)
-        response = self.client.converse(modelId=self.model, messages=usr_prompt, system=sys_prompt)
+        response = self.boto3_client.converse(modelId=self.model, messages=usr_prompt, system=sys_prompt)
         self.update_tokens(response)
-        sample_ids = response['output']['message']['content'][0]['text']
-        if sample_ids == '""' or sample_ids.strip() == "":
+        try:
+            sample_ids = response['output']['message']['content'][0]['text']
+            if sample_ids == '""' or sample_ids.strip() == "":
+                return []
+            else:
+                sample_ids_list = [int(id.strip()) for id in sample_ids.split(',') if id.strip().isdigit()]
+                selected_samples = [page_contents[id] for id in sample_ids_list] if sample_ids_list else []
+                return selected_samples
+        except:
             return []
-        else:
-            sample_ids_list = [int(id.strip()) for id in sample_ids.split(',') if id.strip().isdigit()]
-            selected_samples = [page_contents[id] for id in sample_ids_list] if sample_ids_list else []
-            return selected_samples
 
     def get_table_summaries_by_similarities(self):
-        if self.schema_os_client:
-            sql_os_retriever = OpenSearchHybridRetriever(self.schema_os_client, 5)
-            matched_tables = sql_os_retriever.invoke(self.prompt, ensemble = [0.40, 0.60])
-            serializable_tables = []
-            for document in matched_tables:
-                table_data = json.loads(document.page_content)
-                serializable_tables.append(table_data)
-            
-            return json.dumps(serializable_tables, ensure_ascii=False)
-        else:
-            return ""
+        sql_os_retriever = OpenSearchHybridRetriever(self.schema_os_client, 5)
+        matched_tables = sql_os_retriever.invoke(self.prompt, ensemble = [0.40, 0.60])
+        serializable_tables = []
+        for document in matched_tables:
+            table_data = json.loads(document.page_content)
+            serializable_tables.append(table_data)
+        
+        return json.dumps(serializable_tables, ensure_ascii=False)
 
     def get_table_summaries_all(self):
         query = {
@@ -437,22 +441,6 @@ class DB_Tools:
         }
         return explain_statements.get(self.dialect.lower(), f"Unsupported dialect: {self.dialect}. Please provide the EXPLAIN syntax manually.").format(query=original_query)
 
-    def parse_json_format(self, json_string):
-        json_string = re.sub(r'```json|```|</?response_format>|\n\s*', ' ', json_string)
-        json_string = json_string.strip()
-        match = re.search(r'({.*})', json_string)
-        if match:
-            json_string = match.group(1)
-        else:
-            return "No JSON object found in the string."
-
-        try:
-            parsed_json = json.loads(json_string)
-        except json.JSONDecodeError as e:
-            print("Original output: ", json_string)
-            return f"JSON Parsing Error: {e}"
-        return parsed_json
-
     def save_to_csv(self, data, output_columns: List[str], query: str):
         try:
             data = ast.literal_eval(data)
@@ -482,47 +470,34 @@ class DB_Tools:
         self.tool_state["failed_query"] = query
         if self.retry >= 2:
             action = "Stop the sequence."
+        elif "no such" in log:
+            action = "Use the schema_exploration tool"
         else:
-            action = "Retry the query generation"
+            action = "Retry the query generation tool"
         return {
             "failure_log": log,
             "next_action": action
         } 
 
-    def prompt_refinement(self, input: str):
-        query = {
-            "_source": ["table_name", "table_desc"],
-            "query": {
-                "match_all": {}
-            }
-        }
-        response = self.schema_os_client.conn.search(index=self.schema_os_client.index_name, body=query)
-        table_descriptions = {}
-        for hit in response['hits']['hits']:
-            source = hit['_source']
-            table_name = source['table_name']
-            table_desc = source['table_desc']
-            table_descriptions[table_name] = table_desc
-
-        formatted_text = "Table Descriptions:\n"
-        for table_name, table_desc in table_descriptions.items():
-            formatted_text += f"Table Name: {table_name}\nDescription: {table_desc}\n\n"
-        
+    def prompt_refinement(self, original_prompt, history):
         today = datetime.now(pytz.timezone('Asia/Seoul')).strftime('%Y-%m-%d')
-        sys_prompt, usr_prompt = get_prompt_refinement_prompt(table_descriptions, self.language, self.prompt, today)
-        response = self.client.converse(
-            modelId=self.model,
-            messages=usr_prompt,
-            system=sys_prompt,
-        )
+
+        with st.spinner(f"Refining a prompt"):
+            sys_prompt, usr_prompt = get_prompt_refinement_prompt(original_prompt, today, history)
+            response = self.boto3_client.converse(modelId=self.model, messages=usr_prompt, system=sys_prompt)
         self.update_tokens(response)
-        parsed_json = self.parse_json_format(response['output']['message']['content'][0]['text'])
-        self.prompt = parsed_json.get("question")
-        return parsed_json
+        parsed_json = parse_json_format(response['output']['message']['content'][0]['text'])
+        refined_prompt = parsed_json.get("refined_prompt")
+        st.write("Refined Prompt:", refined_prompt)
+        return refined_prompt
 
     def query_generation(self, input: str):
         table_names = self.db.get_usable_table_names()
-        combined_log = f'failure_log: {self.tool_state["failure_log"]}, failed_query: {self.tool_state["failed_query"]}'
+        combined_log = """
+        failure_log: {failure_log}
+        failed_query: {failed_query}
+        retry_hint: {search_result}
+        """.format(failure_log=self.tool_state["failure_log"], failed_query=self.tool_state["failed_query"], search_result=self.tool_state["search_result"])
 
         # Get Table Summaries
         if len(table_names) >= 10:
@@ -532,7 +507,7 @@ class DB_Tools:
 
         # Table Selection
         sys_prompt, usr_prompt = get_table_selection_prompt(table_summaries, self.prompt, self.samples, combined_log)
-        response = self.client.converse(
+        response = self.boto3_client.converse(
             modelId=self.model,
             messages=usr_prompt,
             system=sys_prompt
@@ -544,53 +519,58 @@ class DB_Tools:
         table_schemas = self.get_table_schemas(table_names)
         
         # SQL Query Generation
-        sys_prompt, usr_prompt = get_query_generation_prompt(self.dialect, table_schemas, self.language, self.prompt, combined_log)
-        response = self.client.converse(
+        sys_prompt, usr_prompt = get_query_generation_prompt(self.samples, self.dialect, table_schemas, self.language, self.prompt, combined_log)
+        response = self.boto3_client.converse(
             modelId=self.model,
             messages=usr_prompt,
             system=sys_prompt
         )
         self.update_tokens(response)
-        
-        parsed_json = self.parse_json_format(response['output']['message']['content'][0]['text'])
+        parsed_json = parse_json_format(response['output']['message']['content'][0]['text'])
         return parsed_json
 
     def validate_and_run_queries(self, generated_query: str):
+        self.tool_state["initial_query"] = generated_query
         explain_query = self.get_explain_query(generated_query)
         try:
-            query_plan = self.db.run_no_throw(explain_query)
+            query_plan = self.db.run(explain_query)
         except Exception as e:
-            return self.query_failure_handling(f"An error occurred while generating the EXPLAIN query: {str(e)}", generated_query)
+            print(self.tool_state)
+            return self.query_failure_handling(f"[E01] An error occurred while generating the EXPLAIN query: {str(e)}", generated_query)
     
         try:
             sys_prompt, usr_prompt = get_query_validation_prompt(self.dialect, query_plan, generated_query, self.language, self.prompt)
-            response = self.client.converse(
+            response = self.boto3_client.converse(
                 modelId=self.model,
                 messages=usr_prompt,
                 system=sys_prompt
             )
             self.update_tokens(response)
             
-            parsed_json = self.parse_json_format(response['output']['message']['content'][0]['text'])
+            parsed_json = parse_json_format(response['output']['message']['content'][0]['text'])
             query = parsed_json.get("final_query") 
             output_columns = parsed_json.get("output_columns")
         except Exception as e:
-            return self.query_failure_handling(f"An issue unrelated to the query was encountered: {str(e)} (Model-related problem)", generated_query)
+            print(self.tool_state)
+            return self.query_failure_handling(f"[E02] An issue unrelated to the query was encountered: {str(e)} (Model-related problem)", generated_query)
   
         try:
-            result = self.db.run_no_throw(query)
+            result = self.db.run(query)
         except Exception as e:
-            return self.query_failure_handling(f"An error occurred while executing the final query: {str(e)}", query)
+            print(self.tool_state)
+            return self.query_failure_handling(f"[E03] An error occurred while executing the final query: {str(e)}", query)
 
         if result is None or (isinstance(result, (list, tuple)) and len(result) == 0):
             self.tool_state["final_query"] = query
             self.tool_state["result_csv_file"] = "No data found from query execution" 
+            self.tool_state["success"] = "True"
             return {"message": "Query executed successfully, but no matching data found."}
         
         try:
             csv_file, query_file, df = self.save_to_csv(result, output_columns, query)
         except Exception as e:
-            return self.query_failure_handling(f"An error occurred while saving the results to CSV: {str(e)}", query)
+            print(self.tool_state)
+            return self.query_failure_handling(f"[E04] An error occurred while saving the results to CSV: {str(e)}", query)
 
         self.tool_state["final_query"] = query
         self.tool_state["sql_query_file"] = query_file
@@ -599,14 +579,64 @@ class DB_Tools:
             self.tool_state["partial_result"] = df[:20].to_dict(orient='records')
         else:
             self.tool_state["full_result"] = df.to_dict(orient='records')
+        self.tool_state["success"] = "True"
         return {"message": "Query executed successfully"}
-        
+
+    def schema_explorer(self, keyword: str):
+        query = {
+            "size": 10, 
+            "query": {
+                "nested": {
+                    "path": "columns",
+                    "query": {
+                        "match": {
+                            "columns.col_desc": f"{keyword}"
+                        }
+                    },
+                    "inner_hits": {
+                        "size": 1, 
+                        "_source": ["columns.col_name", "columns.col_desc"]
+                    }
+                }
+            },
+            "_source": ["table_name"]
+        }
+        response = self.schema_os_client.conn.search(
+            index=self.schema_os_client.index_name,
+            body=query
+        )
+
+        try:
+            results = []
+            table_names = set()  # To store unique table names
+            if 'hits' in response and 'hits' in response['hits']:
+                for hit in response['hits']['hits']:
+                    table_name = hit['_source']['table_name']
+                    table_names.add(table_name)  # Add table name to the set
+                    for inner_hit in hit['inner_hits']['columns']['hits']['hits']:
+                        column_name = inner_hit['_source']['col_name']
+                        column_description = inner_hit['_source']['col_desc']
+                        results.append({
+                            "table_name": table_name,
+                            "column_name": column_name,
+                            "column_description": column_description
+                        })
+                        if len(results) >= 10:
+                            break
+                    if len(results) >= 10:
+                        break
+            self.tool_state['search_result'] += results
+        except:
+            self.tool_state['search_result'] += f"{keyword} not found"
+        table_names_list = ', '.join(table_names)
+        return {
+            "keyword": keyword,
+            "tables_hits": table_names_list
+        }
+
     def tool_router(self, tool, callback):
         with st.spinner(f"Running Tool... ({tool['name']}, Retry: {self.retry})"):
-            if tool['name'] == 'prompt_refinement':
-                res = self.prompt_refinement(tool['input']['input'])
-                tool_result = {"toolUseId": tool['toolUseId'], "content": [{"json": res}]}
-            elif tool['name'] == 'query_generation':
+            if tool['name'] == 'query_generation':
                 res = self.query_generation(tool['input']['input'])
                 tool_result = {"toolUseId": tool['toolUseId'], "content": [{"json": res}]}
             elif tool['name'] == 'validate_and_run_queries':
@@ -618,10 +648,13 @@ class DB_Tools:
                     self.tool_state["failed_query"] = "None"
                 else:
                     self.retry += 1
+            elif tool['name'] == 'schema_exploration':
+                res = self.schema_explorer(tool['input']['keyword'])
+                tool_result = {"toolUseId": tool['toolUseId'], "content": [{"json": res}]}
             else:
                 tool_result = {"toolUseId": tool['toolUseId'], "content": [{"text": "Unknown tool name"}]}
 
-        # print("[DEBUG] Tool_Result:", res)
+            #print("[DEBUG] Tool_Result:", tool_result)
         callback.on_llm_new_result(json.dumps({
             "tool_name": tool['name'], 
             "content": tool_result["content"][0]
@@ -639,11 +672,10 @@ class DB_Tool_Client:
         self.language = language
         self.top_k = 5
         self.tool_config = self.load_tool_config()
-        self.client = self.init_boto3_client(self.region)
+        self.boto3_client = self.init_boto3_client(self.region)
         self.tokens = {'total_input_tokens': 0, 'total_output_tokens': 0, 'total_tokens': 0}
-        self.prompt = prompt
-        self.sys_prompt, self.usr_prompt = get_global_prompt(language, history, prompt)
-        self.db_tool = DB_Tools(self.tokens, config['uri'], self.dialect, self.model, self.region, sql_os_client, schema_os_client, language, prompt)
+        self.db_tool = DB_Tools(self.tokens, config['uri'], self.dialect, self.model, self.region, sql_os_client, schema_os_client, language, prompt, history)
+        self.prompt = self.db_tool.prompt
 
     def init_boto3_client(self, region: str):
         retry_config = Config(
@@ -656,53 +688,21 @@ class DB_Tool_Client:
         with open("./db_metadata/db_tool_config.json", 'r') as file:
             return json.load(file)
 
-    def stream_messages(self, usr_prompt, sys_prompt, callback):
-        response = self.client.converse_stream(
-            modelId=self.model,
-            messages=usr_prompt,
-            system=sys_prompt,
-            toolConfig=self.tool_config
-        )
+    def save_log(self):
+        self.db_tool.tool_state['endtime'] = datetime.now().isoformat()
+        self.db_tool.tool_state['token_used'] = self.tokens['total_tokens']
+
+        log_entry = json.dumps(self.db_tool.tool_state, indent=4)
+        logging.info(log_entry)
         
-        stop_reason = ""
-        message = {"content": []}
-        text = ''
-        tool_use = {}
+        for handler in logging.root.handlers:
+            handler.flush()
+            handler.close()
 
-        for chunk in response['stream']:
-            if 'messageStart' in chunk:
-                message['role'] = chunk['messageStart']['role']
-            elif 'contentBlockStart' in chunk:
-                tool = chunk['contentBlockStart']['start']['toolUse']
-                tool_use['toolUseId'] = tool['toolUseId']
-                tool_use['name'] = tool['name']
-            elif 'contentBlockDelta' in chunk:
-                delta = chunk['contentBlockDelta']['delta']
-                if 'toolUse' in delta:
-                    if 'input' not in tool_use:
-                        tool_use['input'] = ''
-                    tool_use['input'] += delta['toolUse']['input']
-                elif 'text' in delta:
-                    text += delta['text']
-                    callback.on_llm_new_token(delta['text'])
-            elif 'contentBlockStop' in chunk:
-                if 'input' in tool_use:
-                    tool_use['input'] = json.loads(tool_use['input'])
-                    message['content'].append({'toolUse': tool_use})
-                    tool_use = {}
-                else:
-                    message['content'].append({'text': text})
-                    text = ''
-            elif 'messageStop' in chunk:
-                stop_reason = chunk['messageStop']['stopReason']
-            elif 'metadata' in chunk:
-                self.tokens['total_input_tokens'] += chunk['metadata']['usage']['inputTokens']
-                self.tokens['total_output_tokens'] += chunk['metadata']['usage']['outputTokens']
-        return stop_reason, message
-
-    def invoke(self, callback):
-        messages = self.usr_prompt
-        stop_reason, message = self.stream_messages(messages, self.sys_prompt, callback)
+    def invoke(self, callback): 
+        sys_prompt, usr_prompt = get_global_prompt(self.language, self.prompt, self.db_tool.samples)
+        messages = usr_prompt
+        stop_reason, message = stream_converse_messages(self.boto3_client, self.model, self.tool_config, messages, sys_prompt, callback, self.tokens)
         messages.append(message)
 
         while stop_reason == "tool_use":
@@ -714,12 +714,14 @@ class DB_Tool_Client:
                 message = self.db_tool.tool_router(tool_use, callback)
                 messages.append(message)
 
-            stop_reason, message = self.stream_messages(messages, self.sys_prompt, callback)
+            stop_reason, message = stream_converse_messages(self.boto3_client, self.model, self.tool_config, messages, sys_prompt, callback, self.tokens)
             messages.append(message)
 
         # Generating Final Response
-        sys_prompt, usr_prompt = get_answer_generation_prompt(self.language, self.db_tool.tool_state, self.usr_prompt)
-        stop_reason, message = self.stream_messages(usr_prompt, sys_prompt, callback)
+        final_sys_prompt, final_usr_prompt = get_answer_generation_prompt(self.language, self.db_tool.tool_state, usr_prompt)
+        stop_reason, message = stream_converse_messages(self.boto3_client, self.model, self.tool_config, final_usr_prompt, final_sys_prompt, callback, self.tokens)
         final_response = message['content'][0]['text']
         self.tokens['total_tokens'] = self.tokens['total_input_tokens'] + self.tokens['total_output_tokens']
+        self.save_log()
+
         return final_response, self.tokens

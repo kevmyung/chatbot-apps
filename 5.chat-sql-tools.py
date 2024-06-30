@@ -1,11 +1,12 @@
 import streamlit as st
-import json
+import os
 from typing import Dict, Tuple, List, Union
 from libs.db_utils import DB_Tool_Client
 from libs.config import load_model_config, load_language_config
 from libs.models import ChatModel, calculate_cost_from_tokens
 from libs.opensearch import init_opensearch
 from libs.chat_utils import display_chat_messages, update_tokens_and_costs, calculate_and_display_costs,ToolStreamHandler
+from libs.insight_utils import analyze_main
 
 st.set_page_config(page_title='Bedrock AI Chatbot', page_icon="🤖", layout="wide")
 st.title("🤖 Bedrock AI Chatbot")
@@ -24,10 +25,53 @@ def handle_language_change() -> None:
 
 def new_chat() -> None:
     st.session_state["messages"] = [INIT_MESSAGE]
-    st.session_state["langchain_messages"] = []
+
+def parse_conversation_history(messages):
+    history = ""
+    for message in messages:
+        role = message.get('role', 'unknown')
+        content = message.get('content', '')
+        if isinstance(content, list):
+            content = ' '.join([item.get('text', '') for item in content])
+        history += f"{role}: {content}\n"
+    return history
+
+def database_setting():
+    database_selection = st.sidebar.selectbox(
+        lang_config['database'],
+        ('Sample1 (NORMAL)', 'Sample2 (HARD)', 'MySQL', 'PostgreSQL', 'Redshift', 'SQLite', 'Presto', 'Oracle')
+    )
+
+    if database_selection == "Sample1 (NORMAL)":
+        database_dialect = "SQLite"
+        database_uri = "sqlite:///Chinook.db"
+    elif database_selection == "Sample2 (HARD)":
+        database_dialect = "SQLite"
+        database_uri = "sqlite:///Spider_merged.sqlite"
+        if not os.path.exists("Spider_merged.sqlite"):
+            st.error("Spider_merged.sqlite file does not exist.")
+            st.stop()
+    else:
+        database_dialect = database_selection
+        database_uri = st.sidebar.text_input("Database URI", value="", placeholder="dbtype://user:pass@hostname:port/dbname")
+        if not database_uri:
+            st.info(lang_config['database_uri'])
+            st.stop()
+
+    database_config = {
+        "dialect": database_dialect,
+        "uri": database_uri
+    }  
+    return database_config
 
 def render_sidebar() -> Tuple[Dict, Dict, Dict]:
-    st.sidebar.button("New Chat", on_click=new_chat, type="primary")
+    col1, col2 = st.sidebar.columns(2)
+    with col1:
+        st.button("New Chat", on_click=new_chat, type="primary")
+    with col2:
+        if st.button("Analyze", type="primary"):
+            st.session_state.page = "analyze"
+            st.rerun()
     global lang_config
     language = st.sidebar.selectbox(
         'Language 🌎',
@@ -59,37 +103,9 @@ def render_sidebar() -> Tuple[Dict, Dict, Dict]:
         "max_tokens": 20480
     }
 
-    database_selection = st.sidebar.selectbox(
-        lang_config['database'],
-        ('SQLite (Sample)', 'MySQL', 'PostgreSQL', 'Redshift', 'SQLite', 'Presto', 'Oracle')
-    )
-
-    if database_selection != "SQLite (Sample)":
-        database_dialect = database_selection
-        database_uri = st.sidebar.text_input("Database URI", value="", placeholder="dbtype://user:pass@hostname:port/dbname")
-        if not database_uri:
-            st.info(lang_config['database_uri'])
-            st.stop()
-    else:
-        database_dialect = "SQLite"
-        database_uri = "sqlite:///Chinook.db"
-
-    database_config = {
-        "dialect": database_dialect,
-        "uri": database_uri
-    }
+    database_config = database_setting()
 
     return model_info, model_kwargs, database_config
-
-def parse_conversation_history(messages):
-    history = ""
-    for message in messages:
-        role = message.get('role', 'unknown')
-        content = message.get('content', '')
-        if isinstance(content, list):
-            content = ' '.join([item.get('text', '') for item in content])
-        history += f"{role}: {content}\n"
-    return history
 
 def main() -> None:
     model_info, model_kwargs, database_config = render_sidebar()
@@ -111,7 +127,7 @@ def main() -> None:
         assistant_placeholder = st.empty()
         with assistant_placeholder.container():
             with st.chat_message("assistant"):
-                history = parse_conversation_history(st.session_state.messages[-3:])
+                history = parse_conversation_history(st.session_state.messages[1:][-3:])
                 db_client = DB_Tool_Client(model_info, database_config, st.session_state['language_select'], sql_os_client, schema_os_client, prompt, history)
                 with st.expander("Scratchpad (Click to expand)", expanded=True): 
                     response_placeholder = st.empty()  
@@ -126,4 +142,11 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    if 'page' not in st.session_state:
+        st.session_state.page = "main"
+    
+    if st.session_state.page == "main":
+        main()
+    if st.session_state.page == "analyze":
+        analyze_main(lang_config)
+

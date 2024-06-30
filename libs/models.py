@@ -26,13 +26,17 @@ def calculate_cost_from_tokens(tokens, model_id):
             "input_rate": 0.003,
             "output_rate": 0.015
         },
+        "anthropic.claude-3-5-sonnet-20240620-v1:0": {
+            "input_rate": 0.003,
+            "output_rate": 0.015
+        },
         "anthropic.claude-3-haiku-20240307-v1:0": {
             "input_rate": 0.00025,
             "output_rate": 0.00125
         },
     }
     if model_id not in PRICING:
-        return 0.0, 0.0 
+        return 0.0, 0.0, 0.0 
     
     input_cost = tokens['total_input_tokens'] / 1000 * PRICING[model_id]['input_rate']
     output_cost = tokens['total_output_tokens'] / 1000 * PRICING[model_id]['output_rate']

@@ -275,7 +275,7 @@ def initialize_os_client(enable_flag: bool, client_params: Dict, indexing_functi
 
 def init_opensearch(emb_model, lang_config):
     with st.sidebar:
-        enable_rag_query = st.sidebar.checkbox(lang_config['rag_query'], value=True)
+        enable_rag_query = st.sidebar.checkbox(lang_config['rag_query'], value=True, disabled=True)
         sql_os_client = initialize_os_client(
             enable_rag_query,
             {
@@ -290,7 +290,7 @@ def init_opensearch(emb_model, lang_config):
             lang_config
         )
 
-        enable_schema_desc = st.sidebar.checkbox(lang_config['schema_desc'], value=True)
+        enable_schema_desc = st.sidebar.checkbox(lang_config['schema_desc'], value=True, disabled=True)
         schema_os_client = initialize_os_client(
             enable_schema_desc,
             {

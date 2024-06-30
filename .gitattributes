@@ -1,1 +1,2 @@
 Spider_merged.sqlite filter=lfs diff=lfs merge=lfs -text
+spider_detailed_schema.json filter=lfs diff=lfs merge=lfs -text

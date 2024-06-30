@@ -1,3 +1,4 @@
+import re
 from typing import List, Union
 import json
 from PIL import Image, UnidentifiedImageError
@@ -67,6 +68,51 @@ class PrintRetrievalHandler(BaseCallbackHandler):
         image_file_path = os.path.join(base_folder, f"page_{metadata['page']}.png")
         return image_file_path
 
+def stream_converse_messages(client, model, tool_config, messages, system, callback, tokens):
+    response = client.converse_stream(
+        modelId=model,
+        messages=messages,
+        system=system,
+        toolConfig=tool_config
+    )
+    
+    stop_reason = ""
+    message = {"content": []}
+    text = ''
+    tool_use = {}
+
+    for chunk in response['stream']:
+        if 'messageStart' in chunk:
+            message['role'] = chunk['messageStart']['role']
+        elif 'contentBlockStart' in chunk:
+            tool = chunk['contentBlockStart']['start']['toolUse']
+            tool_use['toolUseId'] = tool['toolUseId']
+            tool_use['name'] = tool['name']
+        elif 'contentBlockDelta' in chunk:
+            delta = chunk['contentBlockDelta']['delta']
+            if 'toolUse' in delta:
+                if 'input' not in tool_use:
+                    tool_use['input'] = ''
+                tool_use['input'] += delta['toolUse']['input']
+            elif 'text' in delta:
+                text += delta['text']
+                callback.on_llm_new_token(delta['text'])
+        elif 'contentBlockStop' in chunk:
+            if 'input' in tool_use:
+                tool_use['input'] = json.loads(tool_use['input'])
+                message['content'].append({'toolUse': tool_use})
+                tool_use = {}
+            else:
+                message['content'].append({'text': text})
+                text = ''
+        elif 'messageStop' in chunk:
+            stop_reason = chunk['messageStop']['stopReason']
+        elif 'metadata' in chunk:
+            tokens['total_input_tokens'] += chunk['metadata']['usage']['inputTokens']
+            tokens['total_output_tokens'] += chunk['metadata']['usage']['outputTokens']
+    return stop_reason, message
+
+
 def display_pdf_images(img):
     if os.path.exists(img['path']):
             image = Image.open(img['path'])
@@ -103,6 +149,22 @@ def display_images(
                 elif uploaded_file.type == 'application/pdf':
                     st.write(f"📑 Uploaded PDF file: {uploaded_file.name}")
 
+def parse_json_format(json_string):
+    json_string = re.sub(r'"""\s*(.*?)\s*"""', r'"\1"', json_string, flags=re.DOTALL)
+    json_string = re.sub(r'```json|```|</?response_format>|\n\s*', ' ', json_string)
+    json_string = json_string.strip()
+    match = re.search(r'({.*})', json_string)
+    if match:
+        json_string = match.group(1)
+    else:
+        return "No JSON object found in the string."
+
+    try:
+        parsed_json = json.loads(json_string)
+    except json.JSONDecodeError as e:
+        print("Original output: ", json_string)
+        return f"JSON Parsing Error: {e}"
+    return parsed_json
 
 def display_chat_messages(
     uploaded_files: List[st.runtime.uploaded_file_manager.UploadedFile]

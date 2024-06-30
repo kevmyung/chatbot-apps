@@ -75,16 +75,26 @@ streamlit run 4.chat-sql-agent.py
 - Reference RAG pattern for sample queries using OpenSearch Hybrid Search
 
 ### 5. **Chat SQL Tools**
+**(Optional) SPIDER Database Download**:
+This file is a flattened version of the original SPIDER dataset (`db.table`->`db_table`).
+```bash
+git lfs install
+git lfs pull
 ```
+**Run:**
+```bash
 streamlit run 5.chat-sql-tools.py
 ```
 ![Chat SQL Tools](./images/5.chat-sql-tools.png)
 - Convert and execute user's natural language requests into SQL using Amazon Bedrock [Tool Use](https://docs.aws.amazon.com/bedrock/latest/userguide/tool-use.html)
-- Utilize sample database ([Chinook DB](https://github.com/lerocha/chinook-database)) or input database URI
+- Utilize Sample Database1 - Simple ([Chinook DB](https://github.com/lerocha/chinook-database)) or input database URI
+- Utilize Sample Database2 - Complex ([SPIDER DB](https://github.com/taoyds/spider))
 - Prepare reference data [Link](https://github.com/kevmyung/db-schema-loader)
-    - Apply RAG pattern to sample queries using OpenSearch
-    - Apply RAG pattern to DB schema using OpenSearch
+    - Apply RAG pattern to example queries using OpenSearch
+    - Apply RAG pattern to DB schema (table summaries) using OpenSearch
 - Refine user requests into suitable prompts
 - Optimize based on query plan
 - Save query results (CSV) and SQL logs
-- Visualize query results (CSV) (in progress)
+- Visualize query results (CSV) or image (PNG, JPG).
+    - Still in progress.
+![Chat SQL Tools Analysis](./images/5.chat-sql-tools-analysis.png)

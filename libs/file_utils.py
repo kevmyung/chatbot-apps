@@ -18,6 +18,28 @@ FAISS_PATH = './vectorstore/db_faiss'
 FAISS_ORIGIN = './vectorstore/pdf' 
 INDEX_FILE = 'index.faiss'
 
+class CustomUploadedFile:
+    def __init__(self, name, type, data):
+        self.name = name
+        self.type = type
+        self.data = data
+        self.file_id = name 
+
+    def read(self, *args):
+        return self.data.read(*args)
+
+    def seek(self, *args):
+        return self.data.seek(*args)
+
+    def readlines(self):
+        return self.data.readlines()
+    
+    def readline(self, *args):
+        return self.data.readline(*args)
+    
+    def tell(self):
+        return self.data.tell()
+
 def process_uploaded_files(uploaded_files: List[st.runtime.uploaded_file_manager.UploadedFile], message_images_list: List[str], uploaded_file_ids: List[str]) -> List[Union[dict, str]]:
     num_cols = 10
     cols = st.columns(num_cols)
@@ -205,7 +227,7 @@ def store_schema_description(dynamodb, schema_file, schema_table):
 
 
 def sample_query_indexing(os_client, lang_config):
-    rag_query_file = st.text_input(lang_config['rag_query_file'], value="./db_metadata/example_queries.json")
+    rag_query_file = st.text_input(lang_config['rag_query_file'], value="./db_metadata/chinook_example_queries.json")
     if not os.path.exists(rag_query_file):
         st.warning(lang_config['file_not_found'])
         return
@@ -226,7 +248,7 @@ def sample_query_indexing(os_client, lang_config):
 
 
 def schema_desc_indexing(os_client, lang_config):
-    schema_file = st.text_input(lang_config['schema_file'], value="./db_metadata/detailed_schema.json")               
+    schema_file = st.text_input(lang_config['schema_file'], value="./db_metadata/chinook_detailed_schema.json")
     if not os.path.exists(schema_file):
         st.warning(lang_config['file_not_found'])
         return
