@@ -70,13 +70,32 @@ mappings-schema:
         col_desc:
           type: text
           analyzer: nori
-        # col_desc_v:
-        #   type: knn_vector
-        #   dimension: 1024
-        #   method:
-        #     engine: faiss
-        #     name: hnsw
-        #     parameters:
-        #       ef_construction: 512
-        #       m: 16
-        #     space_type: l2
+
+mappings-detailed-schema:
+  properties:
+    table_name:
+      type: keyword
+    table_desc:
+      type: text
+      analyzer: nori
+    columns:      
+      type: nested
+      properties:
+        col_name:
+          type: keyword
+        col_desc:
+          type: text
+          analyzer: nori
+    table_summary:
+      type: text
+      analyzer: nori
+    table_summary_v:
+      type: knn_vector
+      dimension: 1024
+      method:
+        engine: faiss
+        name: hnsw
+        parameters:
+          ef_construction: 512
+          m: 16
+        space_type: l2
