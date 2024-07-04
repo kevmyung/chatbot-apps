@@ -259,7 +259,8 @@ class DB_Tools:
         self.boto3_client = self.init_boto3_client(region)
         self.engine = create_engine(uri)
         self.db = SQLDatabase(self.engine)
-        self.prompt = self.prompt_refinement(prompt, history)
+        #self.prompt = self.prompt_refinement(prompt, history)
+        self.prompt = prompt
         self.init_tool_state(prompt)
         self.samples = self.collect_samples()
         self.display_samples()
