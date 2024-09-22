@@ -6,10 +6,10 @@ langchain-experimental
 boto3>=1.34.116
 pdfplumber
 pypdf
+python-dateutil==2.8.2
 faiss-cpu
 opensearch-py
 pdf2image
 psycopg2-binary
-sqlalchemy-redshift 
 plotly
 numpy
