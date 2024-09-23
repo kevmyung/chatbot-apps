@@ -1,7 +1,7 @@
 opensearch-auth:
-  domain_endpoint: "https://search-rag-hol-930e86ca-m434mzedpas46nu7izxxgh3wrq.us-east-1.es.amazonaws.com"
-  user_id: "raguser"
-  user_password: "MarsEarth1!"
+  domain_endpoint: ""
+  user_id: ""
+  user_password: ""
 
 settings:
   index.knn: true
