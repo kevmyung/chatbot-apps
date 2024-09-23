@@ -7,6 +7,7 @@
 ```
 pip install -r requirements.txt
 ```
+
 *Note: Since multiple libraries will be installed, dependency errors may occur depending on your environment. Check version compatibility with your existing environment before installation.
 
 2. Run the desired chatbot application:
@@ -20,82 +21,51 @@ streamlit run {Chatbot file}.py
 ```
 streamlit run 1.basic-chat.py
 ```
-![Basic Chat](./images/1.basic-chat.png)
-- Select a Bedrock-based model
-- Provide a system prompt
-- Use a conversation memory buffer
-- Base code:  [Bedrock-ChatBot-with-LangChain-and-Streamlit](https://github.com/davidshtian/Bedrock-ChatBot-with-LangChain-and-Streamlit)
+<img src="./images/basic-chat.png" alt="Basic Chat" width="600"/>
+
+- Select a model
+- Input system prompt
+- Control model parameters
+- Support multi-turn conversations (chat history)
+- Utilize Bedrock Converse API for model invocation
 
 ### 2. **Chat with Input**
 ```
 streamlit run 2.chat-with-input.py
 ```
-![Chat with Input](./images/2.chat-with-input.png)
-- Basic chatbot features  (`1. Basic Chat`)
-- Utilize file input as "Short Term Memory"
-    - Supported input types: images, PDFs, CSV, Python code, etc.
+<img src="./images/chat-with-input.png" alt="Chat with Input" width="600"/>
 
-### 3-1. **Chat RAG FAISS with Image Context**
-```
-streamlit run 3-1.chat-rag-faiss.py
-```
-![Chat RAG FAISS](./images/3-1.chat-rag-faiss.png)
-- Basic chatbot features (`1. Basic Chat`)
-- Utilize file input as "Long Term Memory"
-    - Convert input PDF files into vectors (Bedrock embedding model)
-    - Store converted vectors in FAISS local database
-    - Perform semantic search on user queries to provide context for answers
-- Save PDF pages as images and provide them as context for search results
-    - Additional library `sudo apt-get install poppler-utils`
- 
-### 3-2. **Chat RAG OpenSearch with Hybrid Retriever**
-1. Create an OpenSearch cluster using the CloudFormation file (`cloudformation/setup_opensearch.yaml`)
-    - Existing clusters can be reused
-2. Update the connection information in the `libs/opensearch.yml` file
-3. Run the chatbot application
-```
-streamlit run 3-2.chat-rag-opensearch-hybrid.py
-```
-![Chat with Input](./images/3-2.chat-rag-opensearch.png)
-- Basic chatbot features (`1. Basic Chat`)
-- Utilize file input as "Long Term Memory"
-    - Convert input PDF files into vectors (Bedrock embedding model)
-    - Store converted vectors in an Amazon OpenSearch Service cluster
-    - Perform semantic and textual search on user queries, combining results (ensemble) to provide context for answers
-- OpenSearch Hybrid Search Base Code: [aws-ai-ml-workshop-kr](https://github.com/aws-samples/aws-ai-ml-workshop-kr/blob/master/genai/aws-gen-ai-kr/utils/rag.py)
+- Select a model
+- Input system prompt
+- Support multi-turn conversations (chat history)
+- Provide files as input to the Bedrock Converse API
+    - Supported types: Image, PDF, CSV, Python code, etc.
 
-### 4. **Chat SQL Agent**
+### 3. **Chat with Knowledge Base**
 ```
-streamlit run 4.chat-sql-agent.py
+streamlit run 3.chat-with-knowledge-base.py
 ```
-![Chat SQL Agent](./images/4.chat-sql-agent.png)
-- Convert and execute user's natural language requests into SQL using Langchain XML Agent
-- Utilize sample database ([Chinook DB](https://github.com/lerocha/chinook-database)) or input database URI 
-- Refer to detailed descriptions of DB schema (tables/columns) using OpenSearch
-- Reference RAG pattern for sample queries using OpenSearch Hybrid Search
+<img src="./images/chat-with-knowledge-base.gif" alt="Chat With KnowledgeBase" width="600"/>
 
-### 5. **Chat SQL Tools**
-**(Optional) SPIDER Database Download**:
-This file is a flattened version of the original SPIDER dataset (`db.table`->`db_table`).
-```bash
-git lfs install
-git lfs pull
+- Select a model
+- View available KnowledgeBase list (*Requires prior creation of KnowledgeBase in Amazon Bedrock console [Link](https://docs.aws.amazon.com/bedrock/latest/userguide/knowledge-base-create.html))
+- Search and retrieve context from KnowledgeBase ([Retrieve API](https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/bedrock-agent-runtime/client/retrieve.html#))
+- Generate responses based on retrieved context
+- Provide source and score of retrieved context
+
+
+### 4. **Chat Text2SQL**
+
 ```
-**Run:**
-```bash
-streamlit run 5.chat-sql-tools.py
+streamlit run 4.chat-text2sql.py
 ```
-![Chat SQL Tools](./images/5.chat-sql-tools.png)
-- Convert and execute user's natural language requests into SQL using Amazon Bedrock [Tool Use](https://docs.aws.amazon.com/bedrock/latest/userguide/tool-use.html)
-- Utilize Sample Database1 - Simple ([Chinook DB](https://github.com/lerocha/chinook-database)) or input database URI
-- Utilize Sample Database2 - Complex ([SPIDER DB](https://github.com/taoyds/spider))
-- Prepare reference data [Link](https://github.com/kevmyung/db-schema-loader)
-    - Apply RAG pattern to example queries using OpenSearch
-    - Apply RAG pattern to DB schema (table summaries) using OpenSearch
-- Refine user requests into suitable prompts
-- Optimize based on query plan
-- Save query results (CSV) and SQL logs
-- Visualize query results (CSV) or image (PNG, JPG).
-![Chat SQL Tools Analysis](./images/5.chat-sql-tools-analysis.png)
-- Overall Workflow
-![Chat SQL Tools Workflow](./images/5.chat-sql-tools-workflow.png)
+<img src="./images/chat-text2sql.gif" alt="Chat SQL Tools" width="600"/>
+
+- Query database based on user questions
+- Directly input database URI or use sample database ([Chinook DB](https://github.com/lerocha/chinook-database))
+- Implement Agentic Text2SQL workflow using Bedrock Converse API's Tool Use feature
+- Index pre-prepared sample queries and schema documents in OpenSearch
+    - Refer to the sample query and schema preparation process [Link](https://github.com/kevmyung/db-schema-loader)
+- RAG-based query composition
+- Execute composed queries on the DB and save results to a CSV file
+- Visualize query results using Plotly
