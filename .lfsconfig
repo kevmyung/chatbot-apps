@@ -1,3 +1,0 @@
-[lfs]
-    fetchexclude = spider_detailed_schema.json,Spider_merged.sqlite
-

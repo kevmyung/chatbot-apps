@@ -1,20 +1,28 @@
 import os
 import json
 import yaml
+import boto3
 from copy import deepcopy
-from typing import List, Optional, Dict, Tuple
+from typing import List, Optional, Dict, Tuple, Any
 import streamlit as st
 from opensearchpy import OpenSearch, RequestsHttpConnection
-from langchain.schema import BaseRetriever, Document
-from langchain_core.callbacks import CallbackManagerForRetrieverRun
-from langchain_community.vectorstores import OpenSearchVectorSearch
-from .file_utils import sample_query_indexing, schema_desc_indexing
+from libs.file_utils import sample_query_indexing, schema_desc_indexing
+
+class Document:
+    def __init__(self, page_content: str, metadata: Dict[str, Any] = None):
+        self.page_content = page_content
+        self.metadata = metadata or {}
+
+
+class Retriever:
+    def get_relevant_documents(self, query: str) -> List[Document]:
+        raise NotImplementedError
+
 
 class OpenSearchClient:
-    def __init__(self, emb, index_name, mapping_name, vector, text, output):
+    def __init__(self, index_name, mapping_name, vector, text, output):
         config = self.load_opensearch_config()
         self.index_name = index_name
-        self.emb = emb
         self.config = config
         self.endpoint = config['opensearch-auth']['domain_endpoint']
         self.http_auth = (config['opensearch-auth']['user_id'], config['opensearch-auth']['user_password'])
@@ -29,12 +37,6 @@ class OpenSearchClient:
             verify_certs=True,
             connection_class=RequestsHttpConnection
         ) 
-        self.vector_store = OpenSearchVectorSearch(
-            index_name=self.index_name,
-            opensearch_url=self.endpoint,
-            embedding_function=self.emb,
-            http_auth=self.http_auth,
-        )
 
     def load_opensearch_config(self):
         file_dir = os.path.dirname(os.path.abspath(__file__))
@@ -53,32 +55,31 @@ class OpenSearchClient:
         if self.is_index_present():
             self.conn.indices.delete(self.index_name)
 
-class OpenSearchHybridRetriever(BaseRetriever):
-    os_client: OpenSearchClient
-    k: int = 5
-    verbose: bool = True
-    filter: List[dict] = []
 
-    def __init__(self, os_client: OpenSearchClient, k):
-        super().__init__(os_client=os_client)
+class OpenSearchHybridRetriever:
+    def __init__(self, os_client, k: int = 5):
         self.os_client = os_client
         self.k = k
-    
-    def _get_relevant_documents(self, query: str, *, ensemble: List, run_manager: CallbackManagerForRetrieverRun) -> List[Document]:
-        os_client = self.os_client
-        search_result = retriever_utils.search_hybrid(
-            query=query,
-            k=self.k,
-            filter=self.filter,
-            index_name=os_client.index_name,
-            os_conn=os_client.conn,
-            emb=os_client.emb,
-            ensemble_weights=ensemble,
-            vector_field=os_client.vector,
-            text_field=os_client.text,
-            output_field=os_client.output
-        )
-        return search_result
+        self.filter = []
+
+    def get_relevant_documents(self, query: str, ensemble: List[float]) -> List[Document]:
+        try:
+            search_result = retriever_utils.search_hybrid(
+                query=query,
+                k=self.k,
+                filter=self.filter,
+                index_name=self.os_client.index_name,
+                os_conn=self.os_client.conn,
+                ensemble_weights=ensemble,
+                vector_field=self.os_client.vector,
+                text_field=self.os_client.text,
+                output_field=self.os_client.output
+            )
+            return search_result
+        except Exception as e:
+            st.error(f"Error in retrieving documents: {str(e)}")
+            st.warning("Unable to retrieve relevant documents. Please check your OpenSearch configuration.")
+            return []
 
 class retriever_utils():
 
@@ -94,6 +95,12 @@ class retriever_utils():
     
     @classmethod 
     def search_semantic(cls, **kwargs):
+        boto3_client = boto3.client("bedrock-runtime", region_name=st.session_state.bedrock_region)
+        model_id = "amazon.titan-embed-text-v2:0"
+        request = json.dumps({"inputText": kwargs["query"]})
+        response = boto3_client.invoke_model(modelId=model_id, body=request)
+        embeddings = json.loads(response["body"].read())["embedding"]
+
         semantic_query = {
             "query": {
                 "bool": {
@@ -101,7 +108,7 @@ class retriever_utils():
                         {
                             "knn": {
                                 kwargs["vector_field"]: {
-                                    "vector": kwargs["emb"].embed_query(kwargs["query"]),
+                                    "vector": embeddings,
                                     "k": kwargs["k"],
                                 }
                             }
@@ -192,7 +199,6 @@ class retriever_utils():
     def search_hybrid(cls, **kwargs):
 
         assert "query" in kwargs, "Check your query"
-        assert "emb" in kwargs, "Check your emb"
         assert "index_name" in kwargs, "Check your index_name"
         assert "os_conn" in kwargs, "Check your OpenSearch Connection"
 
@@ -200,7 +206,6 @@ class retriever_utils():
         similar_docs_semantic = cls.search_semantic(
                 index_name=kwargs["index_name"],
                 os_conn=kwargs["os_conn"],
-                emb=kwargs["emb"],
                 query=kwargs["query"],
                 k=kwargs.get("k", 5),
                 vector_field=kwargs["vector_field"],
@@ -248,7 +253,7 @@ class retriever_utils():
         return [doc_map[doc_id] for doc_id, _ in sorted_docs[:k]]
 
 
-def get_opensearch_retriever(os_client: OpenSearchClient):
+def get_opensearch_retriever(os_client):
     if "retriever" not in st.session_state:
         retriever = OpenSearchHybridRetriever(os_client, 5)
         st.session_state['retriever'] = retriever
@@ -265,44 +270,42 @@ def lookup_opensearch_document(index_name, os_conn, query):
     return response
 
 
-def initialize_os_client(enable_flag: bool, client_params: Dict, indexing_function, lang_config: Dict):
-    if enable_flag:
-        client = OpenSearchClient(**client_params)
-        indexing_function(client, lang_config)
-    else:
-        client = ""
+def initialize_os_client(client_params: Dict, indexing_function, lang_config: Dict):
+    client = OpenSearchClient(**client_params)
+    indexing_function(client, lang_config)
+    
     return client
 
-def init_opensearch(emb_model, lang_config):
-    with st.sidebar:
-        enable_rag_query = st.sidebar.checkbox(lang_config['rag_query'], value=True, disabled=True)
-        sql_os_client = initialize_os_client(
-            enable_rag_query,
-            {
-                "emb": emb_model,
-                "index_name": 'example_queries',
-                "mapping_name": 'mappings-sql',
-                "vector": "input_v",
-                "text": "input",
-                "output": ["input", "query"]
-            },
-            sample_query_indexing,
-            lang_config
-        )
+def init_opensearch(lang_config):
+    try:
+        with st.sidebar:
+            sql_os_client = initialize_os_client(
+                {
+                    "index_name": 'example_queries',
+                    "mapping_name": 'mappings-sql',
+                    "vector": "input_v",
+                    "text": "input",
+                    "output": ["input", "query"]
+                },
+                sample_query_indexing,
+                lang_config
+            )
 
-        enable_schema_desc = st.sidebar.checkbox(lang_config['schema_desc'], value=True, disabled=True)
-        schema_os_client = initialize_os_client(
-            enable_schema_desc,
-            {
-                "emb": emb_model,
-                "index_name": 'schema_descriptions',
-                "mapping_name": 'mappings-detailed-schema',
-                "vector": "table_summary_v",
-                "text": "table_summary",
-                "output": ["table_name", "table_summary"]
-            },
-            schema_desc_indexing,
-            lang_config
-        )
+            schema_os_client = initialize_os_client(
+                {
+                    "index_name": 'schema_descriptions',
+                    "mapping_name": 'mappings-detailed-schema',
+                    "vector": "table_summary_v",
+                    "text": "table_summary",
+                    "output": ["table_name", "table_summary"]
+                },
+                schema_desc_indexing,
+                lang_config
+            )
 
-    return sql_os_client, schema_os_client
+        return sql_os_client, schema_os_client
+
+    except ValueError as e:
+        st.error(f"OpenSearch configuration error: {str(e)}")
+        st.warning("Unable to initilize OpenSearch. Please check your OpenSearch configuration (`libs/opensearch.yml`).")
+        return None, None

@@ -11,9 +11,9 @@ import mimetypes
 import plotly.express as px
 from botocore.config import Config
 from libs.config import load_model_config, load_language_config
-from .prompts import get_data_filtering_prompt, get_code_generation_prompt
-from .chat_utils import stream_converse_messages, parse_json_format
-from .file_utils import process_uploaded_files, CustomUploadedFile
+from libs.prompts import get_data_filtering_prompt, get_code_generation_prompt
+from libs.common_utils import stream_converse_messages, parse_json_format
+from libs.file_utils import process_uploaded_files, CustomUploadedFile
 
 INIT_MESSAGE = {"role": "assistant", "content": ""}
 lang_config = {}
@@ -183,7 +183,7 @@ def input_file_processor():
         uploaded_files.append(custom_file)
 
     if uploaded_files:
-        st.session_state.file_content = process_uploaded_files(uploaded_files, [], [])
+        st.session_state.file_content = process_uploaded_files(uploaded_files, [])
     
     return st.session_state.file_content
 
@@ -197,7 +197,7 @@ def analyze_main():
     input_file_processor()
     if 'file_content' in st.session_state and st.session_state.file_content:
         if st.session_state.file_content[0]['type'] == 'text':
-            input_dataframe = pd.read_csv(StringIO(st.session_state.file_content[0]['text']))
+            input_dataframe = pd.read_csv(StringIO(st.session_state.file_content[0]['content']))
             plot_type_container = st.empty()
             plot_type = select_plot_type(plot_type_container)
             insight_client = Insight_Tool_Client(model_info, st.session_state['language_select_insight'], input_dataframe, plot_type)
