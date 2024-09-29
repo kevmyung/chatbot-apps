@@ -3,5 +3,8 @@ __pycache__/
 *.py[cod]
 *.class
 .ipynb_checkpoints
-
-
+plugins/
+samples/
+neo4j/
+.env
+data/

@@ -13,3 +13,6 @@ pdf2image
 psycopg2-binary
 plotly
 numpy
+langgraph
+py2neo
+neo4j
