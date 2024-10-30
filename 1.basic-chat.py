@@ -4,7 +4,7 @@ from libs.config import load_language_config, load_model_config
 from libs.file_utils import process_user_input
 from libs.common_utils import handle_language_change, display_ai_response
 
-MAX_MESSAGE_HISTORY = 10
+MAX_MESSAGE_HISTORY = 20
 BEDROCK_REGIONS = ['us-west-2', 'us-east-1', 'ap-northeast-1']
 
 st.set_page_config(page_title='Bedrock AI Chatbot', page_icon="🤖", layout="wide")

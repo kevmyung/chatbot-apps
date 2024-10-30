@@ -5,7 +5,7 @@ from libs.file_utils import handle_file_uploads, process_user_input
 from libs.common_utils import handle_language_change, display_ai_response
 from typing import List, Dict, Any
 
-MAX_MESSAGE_HISTORY = 10
+MAX_MESSAGE_HISTORY = 20
 SUPPORTED_FILE_TYPES = ["jpg", "jpeg", "png", "txt", "pdf", "csv", "py"]
 BEDROCK_REGIONS = ['us-west-2', 'us-east-1', 'ap-northeast-1']
 
