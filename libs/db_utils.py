@@ -7,17 +7,20 @@ import re
 import logging
 import warnings
 from datetime import datetime
-from typing import List, Dict, Any, Optional, Annotated
+from typing import List, Dict, Any, Optional, Annotated, Union
 from botocore.config import Config
 import boto3
 import pandas as pd
 import ast
 import pytz
 import streamlit as st
+
 from sqlalchemy import create_engine
-from sqlalchemy.exc import SAWarning
-import streamlit as st
-from langchain_community.utilities import SQLDatabase
+from sqlalchemy import inspect, MetaData, Table, select
+from sqlalchemy.engine import Engine
+from sqlalchemy.schema import CreateTable
+from sqlalchemy import exc as sa_exc
+#from langchain_community.utilities import SQLDatabase
 
 # Custom Module Imports
 from libs.common_utils import parse_json_format, stream_converse_messages, ToolStreamHandler
@@ -32,9 +35,105 @@ from libs.prompts import (
 )
 from libs.opensearch import OpenSearchHybridRetriever, OpenSearchClient
 
-warnings.filterwarnings("ignore", r".*support Decimal objects natively, and SQLAlchemy", SAWarning)
-logging.basicConfig(level=logging.ERROR, filename='error.log')
-logging.basicConfig(level=logging.INFO, filename='execution_log.json', format='%(message)s')
+
+warnings.filterwarnings('ignore', category=sa_exc.SAWarning)
+
+class SQLDatabase:
+    def __init__(self, engine: Engine):
+        self.engine = engine
+        self.metadata = MetaData()
+
+    def get_table_info(self, table_names: List[str]) -> str:
+        inspector = inspect(self.engine)
+        all_table_names = inspector.get_table_names()
+
+        if not set(table_names).issubset(all_table_names):
+            missing_tables = set(table_names) - set(all_table_names)
+            raise ValueError(f"table_names {missing_tables} not found in database")
+
+        table_info = []
+        for table_name in table_names:
+            # Get table DDL
+            table = Table(table_name, self.metadata, autoload_with=self.engine)
+            create_table = str(CreateTable(table).compile(self.engine))
+
+            # Get sample rows
+            sample_rows = self.get_sample_rows(table)
+
+            table_info.append(f"{create_table.rstrip()}\n\n/*\n{sample_rows}\n*/")
+
+        return "\n\n".join(table_info)
+    
+    def get_sample_rows(self, table: Table) -> str:
+        query = select(table).limit(3)
+        with self.engine.connect() as conn:
+            result = conn.execute(query)
+            rows = result.fetchall()
+
+        if not rows:
+            return "No rows found"
+
+        column_names = result.keys()
+        rows_str = "\n".join([str(dict(zip(column_names, row))) for row in rows])
+        return f"3 rows from {table.name} table:\n{rows_str}"
+    
+
+    def get_table_schemas(self, table_names: List[str]) -> Dict[str, Dict]:
+        try:
+            tables = [t.strip() for t in table_names]
+            data = self.get_table_info(tables)
+            if not data:
+                logging.warning("No data returned from DB")
+                return {}
+
+            statements = data.split("\n\n")
+
+            sql_statements = {}
+            sample_data = {}
+            for statement in statements:
+                if "CREATE TABLE" in statement:
+                    table_match = statement.split("CREATE TABLE ", 1)[1].split("(", 1)[0].strip()
+                    table_name = table_match.strip('`"')
+                    sql_statements[table_name] = statement.split("/*")[0].strip()
+                if "rows from" in statement:
+                    table_name = statement.split("rows from ", 1)[1].split(" table")[0]
+                    sample_data[table_name] = statement.split("*/")[0].strip()
+
+            table_details = {}
+            for table in tables:
+                table_details[table] = {
+                    "table": table,
+                    "cols": self.get_column_description(table),
+                    "create_table_sql": sql_statements.get(table, "Not available"),
+                    "sample_data": sample_data.get(table, "No sample data available")
+                }
+
+                if not table_details[table]["cols"]:
+                    print(f"No columns found for table {table}")
+
+            return table_details
+        except Exception as e:
+            logging.error(f"Error in get_table_schemas: {str(e)}")
+            return {}
+
+    def get_column_description(self, table_name: str) -> Dict[str, Dict]:
+        inspector = inspect(self.engine)
+        columns = inspector.get_columns(table_name)
+        return {col['name']: {'type': str(col['type']), 'nullable': col['nullable']} for col in columns}
+
+    def get_usable_table_names(self):
+        inspector = inspect(self.engine)
+        return inspector.get_table_names()
+
+    def run(self, query: str) -> Union[str, List[Dict[str, Any]]]:
+        with self.engine.connect() as conn:
+            result = conn.execute(query)
+            rows = result.fetchall()
+
+        if not rows:
+            return ""
+
+        return [dict(row) for row in rows]
 
 class DB_Tools:
     def __init__(self, tokens: dict, uri: str, dialect: str, model: str, region: str, sql_os_client: OpenSearchClient, schema_os_client: OpenSearchClient, language: str, prompt: str, history: str):
@@ -178,7 +277,7 @@ class DB_Tools:
             tables = [t.strip() for t in table_names]
             sql_statements = {}
             sample_data = {}
-            data = self.db.get_table_info_no_throw(tables)
+            data = self.db.get_table_info(tables)
             
             if not data:
                 logging.warning("No data returned from DB")
@@ -232,29 +331,35 @@ class DB_Tools:
         }
         return explain_statements.get(self.dialect.lower(), f"Unsupported dialect: {self.dialect}. Please provide the EXPLAIN syntax manually.").format(query=original_query)
 
-    def save_to_csv(self, data, output_columns: List[str], query: str):
+    def save_to_csv(self, data, query: str):
         try:
-            data = ast.literal_eval(data)
-        except (ValueError, SyntaxError) as ve:
-            logging.error(f"Data conversion error: {ve}")
-            return {"failure_log": "There was an error processing the query results. Please check the query syntax and output columns."}
-        
-        if data:
-            df = pd.DataFrame(data, columns=output_columns)
+            if isinstance(data, str):
+                data = eval(data) 
+
+            if not data:
+                return {"failure_log": "No data to save."}
+
+            df = pd.DataFrame(data)
             df = df.where(pd.notnull(df), None)
-            
+
             current_time = datetime.now().strftime("%Y%m%d%H%M%S")
             random_id = str(uuid.uuid4())
             folder_path = "./result_files"
-            if not os.path.exists(folder_path):
-                os.makedirs(folder_path)
+            os.makedirs(folder_path, exist_ok=True)
+
             csv_file = f"{folder_path}/query_result_{current_time}_{random_id}.csv"
             query_file = f"{folder_path}/query_{current_time}_{random_id}.sql"
 
             df.to_csv(csv_file, index=False)
             with open(query_file, 'w') as file:
                 file.write(query)
+
             return csv_file, query_file, df
+
+        except Exception as e:
+            logging.error(f"Error in save_to_csv: {str(e)}")
+            return {"failure_log": f"An error occurred while saving the data: {str(e)}"}
+
 
     def query_failure_handling(self, log, query):
         self.tool_state["failure_log"] = log
@@ -341,7 +446,7 @@ class DB_Tools:
             
             parsed_json = parse_json_format(response['output']['message']['content'][0]['text'])
             query = parsed_json.get("final_query") 
-            output_columns = parsed_json.get("output_columns")
+            #output_columns = parsed_json.get("output_columns")
         except Exception as e:
             print(self.tool_state)
             return self.query_failure_handling(f"[E02] An issue unrelated to the query was encountered: {str(e)} (Model-related problem)", generated_query)
@@ -359,7 +464,7 @@ class DB_Tools:
             return {"message": "Query executed successfully, but no matching data found."}
         
         try:
-            csv_file, query_file, df = self.save_to_csv(result, output_columns, query)
+            csv_file, query_file, df = self.save_to_csv(result, query)
         except Exception as e:
             print(self.tool_state)
             return self.query_failure_handling(f"[E04] An error occurred while saving the results to CSV: {str(e)}", query)
